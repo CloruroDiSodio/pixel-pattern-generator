@@ -97,7 +97,7 @@ Check the pill in the header: it should read **“API online”**. It polls
 ### 3. Tests
 
 ```bash
-cd backend   && pytest                                      # 168 tests
+cd backend   && pytest                                      # 179 tests
 cd frontend  && npm run typecheck && npm run lint && npm run build
 ```
 
@@ -294,10 +294,17 @@ Requests are debounced and `AbortController` cancels superseded work.
 | Health check path | `/api/health` |
 | Python version | **3.12** (or any ≥ 3.10, so the patched Pillow is used) |
 
-> `requirements.lock` is compiled for a single interpreter because it holds one
-> resolved hash set per Python version. Use it as-is on Python 3.9, or regenerate
-> it under your deploy interpreter:
-> `pip-compile --generate-hashes --output-file=requirements.lock requirements.txt`
+> **`requirements.lock` and Python versions.** `pip-compile` resolves for the
+> interpreter it runs under, so the lock must carry a hash set for *every*
+> interpreter you deploy on. Pillow is pinned with environment markers
+> (`python_version < "3.10"` → 11.3.0, `>= "3.10"` → 12.1.1), and a lock generated
+> on 3.9 alone will silently skip Pillow on a 3.12 host — the build succeeds and
+> the process then dies with `ModuleNotFoundError: No module named 'PIL'`.
+> `tests/test_lockfile.py` fails the build if either branch goes missing.
+>
+> To regenerate after a dependency change, run `pip-compile` under **each**
+> supported interpreter and merge the branches (see `backend/tools/`), or simply
+> use `pip install -r requirements.txt` on the deploy target.
 
 Environment variables to set:
 

@@ -17,7 +17,8 @@ backend/
 │   ├── conftest.py         # deterministic sample-image fixtures
 │   ├── test_utils.py       # 36 tests — colour maths, parsing, serialisation
 │   ├── test_processor.py   # 79 tests — pipeline, dithering, palettes, patterns
-│   └── test_api.py         # 53 tests — every route, status codes, CORS, hardening
+│   ├── test_api.py         # 56 tests — every route, status codes, CORS, hardening
+│   └── test_lockfile.py     #  8 tests — lock file stays deployable
 ├── pytest.ini
 ├── requirements.txt     # runtime deps
 └── requirements-dev.txt # + pytest, pytest-cov, httpx
@@ -62,7 +63,7 @@ Keep this running in its own terminal — the Next.js front-end (`../frontend`, 
 ## Test
 
 ```bash
-pytest                                   # 168 tests
+pytest                                   # 179 tests
 pytest --cov=app --cov-report=term-missing
 ```
 
@@ -157,6 +158,21 @@ colour labels stay stable.
 
 Uploads are decoded from an allowlist of formats and rejected **before** any pixel
 data is decoded — see the root [Security section](../README.md#security).
+
+## Locked installs
+
+`requirements.lock` is generated with `pip-compile --generate-hashes`, but
+`pip-compile` resolves for the interpreter it runs under. Because Pillow is pinned
+with environment markers, the lock needs a branch per supported Python version or a
+matching host silently skips it (`ModuleNotFoundError: No module named 'PIL'`).
+
+`tests/test_lockfile.py` guards this invariant. `backend/tools/` holds the helpers
+used to add and verify the extra branch:
+
+```bash
+python tools/add_pillow_branch.py     # insert the Pillow >= 3.10 hashes
+python tools/verify_pillow_branch.py # check a downloaded wheel is hash-pinned
+```
 
 ## Deploying to Render
 
