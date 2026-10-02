@@ -1,37 +1,30 @@
 # Pixel Art & Pattern Generator — Netlify configuration
 #
 # The Next.js app lives in ./frontend, so Netlify only has to be told where to
-# look. The backend is a separate service (Render) and is never built here.
+# look. The API host is injected at build time (see [build.environment]).
 
 [build]
   # Dependencies are installed and `npm run build` runs inside ./frontend.
   base = "frontend"
   command = "npm run build"
-
-  # No `publish` on purpose. Netlify runs Next.js through its OpenNext adapter
-  # with zero configuration and picks the publish directory itself.
-  #
-  # Setting `publish = ".next"` by hand looks harmless but is not: Next's build
-  # output has no index.html at its root (the prerendered HTML lives at
-  # .next/server/app/index.html), so Netlify serves .next as a plain static
-  # directory, finds nothing for "/", and returns Next's "Page not found".
-  # Verify in the build log - it prints the directory it actually used.
-
-  # IMPORTANT - do NOT set NEXT_PUBLIC_API_URL or NEXT_PUBLIC_SITE_URL here.
-  #
-  # netlify.toml overrides the Netlify dashboard when the two conflict, so
-  # hardcoding a placeholder here silently wins over whatever you set in the
-  # UI and the deployed bundle ends up pointing at the placeholder. Both are
-  # baked into the client bundle at build time.
-  #
-  # Set them in Site configuration -> Environment variables instead:
-  #   NEXT_PUBLIC_API_URL   https://<your-api>.onrender.com
-  #   NEXT_PUBLIC_SITE_URL  https://<your-site>.netlify.app
-  #
-  # After changing either one: Deploys -> Clear cache and deploy site.
+  # NOTE: `publish` is resolved relative to `base`, so this is frontend/.next.
+  publish = ".next"
 
 [build.environment]
   NODE_VERSION = "20.17.0"
+
+  # NEXT_PUBLIC_API_URL is deliberately NOT set here.
+  #
+  # Netlify's own documentation: "netlify.toml overrides the Netlify UI when the
+  # two conflict." Any value below therefore beats whatever you enter in the
+  # dashboard, and NEXT_PUBLIC_* values are inlined into the client bundle at
+  # build time - so a placeholder would silently ship and every visitor would be
+  # pointed at it.
+  #
+  # Set it in Site configuration -> Environment variables instead:
+  #   NEXT_PUBLIC_API_URL   https://<your-api>.onrender.com
+  #   NEXT_PUBLIC_SITE_URL  https://<your-site>.netlify.app
+  # then Deploys -> Clear cache and deploy site.
 
 [dev]
   command = "npm run dev"
@@ -39,14 +32,8 @@
   port = 8888
   autoLaunch = false
 
-# No [[plugins]] block on purpose. Netlify runs Next.js through its OpenNext
-# adapter with zero configuration; pinning @netlify/plugin-nextjs opts out of
-# the adapter updates and newer architecture improvements.
-
-# NOTE: there is deliberately no frontend/public/_redirects. The catch-all SPA
-# fallback ("/*  /index.html  200") is for client-side routers. Next.js App
-# Router does its own routing, and on Netlify the rewrite shadows it and the
-# static assets. The app has a single route ("/"), so it is not needed.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
 
 [[headers]]
   for = "/*"

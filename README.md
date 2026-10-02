@@ -277,18 +277,13 @@ Requests are debounced and `AbortController` cancels superseded work.
 
 `netlify.toml` is committed and works as-is:
 
-- base directory `frontend`, build command `npm run build`
+- base directory `frontend`, build command `npm run build`, publish `.next`
+  (note: `publish` is resolved **relative to** `base`)
+- `@netlify/plugin-nextjs` is declared in `[[plugins]]`. This pairing — plugin
+  plus `publish = ".next"` — is what makes `/` resolve; removing either one
+  results in Next's "Page not found". Verified by deploying, not by reading docs.
 - **Only `frontend/` is built.** The backend is a separate Render service and is
   never part of the Netlify build.
-- **`publish` is deliberately not set.** Netlify runs Next.js through its OpenNext
-  adapter with zero configuration and chooses the publish directory itself.
-  Setting `publish = ".next"` manually breaks routing: Next's build output has no
-  `index.html` at its root, so Netlify serves it as a plain static directory and
-  `/` returns "Page not found". The build log prints the directory actually used
-  — check it if the site misbehaves.
-- There is no `[[plugins]]` block: Netlify runs Next.js through its OpenNext
-  adapter with zero configuration, and pinning `@netlify/plugin-nextjs` opts out
-  of adapter updates.
 
 **Set these two variables in the Netlify UI**, *not* in `netlify.toml`:
 
