@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body {
+    @apply bg-ink-950 text-slate-200 antialiased;
+  }
+
+  body {
+    background-image:
+      radial-gradient(60rem 40rem at 12% -10%, rgb(124 92 255 / 0.16), transparent 60%),
+      radial-gradient(50rem 30rem at 100% 0%, rgb(74 222 128 / 0.10), transparent 55%);
+    background-attachment: fixed;
+  }
+
+  /* Keep range inputs consistent across browsers. */
+  input[type='range'] {
+    @apply h-1.5 w-full cursor-pointer appearance-none rounded-full bg-ink-600;
+  }
+
+  input[type='range']::-webkit-slider-thumb {
+    @apply h-4 w-4 appearance-none rounded-full bg-accent-soft shadow;
+  }
+
+  input[type='range']::-moz-range-thumb {
+    @apply h-4 w-4 rounded-full border-0 bg-accent-soft;
+  }
+
+  input[type='color'] {
+    @apply h-9 w-14 cursor-pointer rounded-lg border border-ink-600 bg-ink-800 p-1;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent-soft ring-offset-2 ring-offset-ink-950;
+  }
+}
+
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-ink-700 bg-ink-900/70 shadow-panel backdrop-blur;
+  }
+
+  .field-label {
+    @apply mb-1.5 flex items-baseline justify-between text-xs font-medium uppercase tracking-wider text-slate-400;
+  }
+
+  .select,
+  .text-input {
+    @apply w-full rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-slate-100
+      transition placeholder:text-slate-500 hover:border-ink-500
+      focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-800
+      px-3 py-2 text-sm font-medium text-slate-200 transition
+      hover:border-ink-500 hover:bg-ink-700
+      disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .btn-primary {
+    @apply border-transparent bg-accent text-white hover:bg-accent-strong hover:border-transparent;
+  }
+
+  .btn-ghost {
+    @apply border-transparent bg-transparent text-slate-300 hover:bg-ink-800 hover:border-transparent;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-full border border-ink-600 bg-ink-800 px-2 py-0.5
+      text-[11px] font-medium text-slate-300;
+  }
+}
+
+/* The pixel art must never be smoothed by the browser. */
+.pixelated {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
