@@ -7,11 +7,15 @@
   # Dependencies are installed and `npm run build` runs inside ./frontend.
   base = "frontend"
   command = "npm run build"
-  # NOTE: `publish` is resolved relative to `base`, so this is frontend/.next.
-  publish = ".next"
 
-[build.environment]
-  NODE_VERSION = "20.17.0"
+  # No `publish` on purpose. Netlify runs Next.js through its OpenNext adapter
+  # with zero configuration and picks the publish directory itself.
+  #
+  # Setting `publish = ".next"` by hand looks harmless but is not: Next's build
+  # output has no index.html at its root (the prerendered HTML lives at
+  # .next/server/app/index.html), so Netlify serves .next as a plain static
+  # directory, finds nothing for "/", and returns Next's "Page not found".
+  # Verify in the build log - it prints the directory it actually used.
 
   # IMPORTANT - do NOT set NEXT_PUBLIC_API_URL or NEXT_PUBLIC_SITE_URL here.
   #
@@ -25,6 +29,9 @@
   #   NEXT_PUBLIC_SITE_URL  https://<your-site>.netlify.app
   #
   # After changing either one: Deploys -> Clear cache and deploy site.
+
+[build.environment]
+  NODE_VERSION = "20.17.0"
 
 [dev]
   command = "npm run dev"
