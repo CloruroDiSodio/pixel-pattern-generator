@@ -45,6 +45,10 @@ uvicorn app.main:app --reload --port 8000
 python -m app.main           # honours HOST / PORT / RELOAD env vars
 ```
 
+Keep this running in its own terminal — the Next.js front-end (`../frontend`, port
+3000) is a separate process that calls this API. See the
+[root README](../README.md#quick-start) for the full two-terminal walkthrough.
+
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `HOST` | `0.0.0.0` | Bind address (`python -m app.main` only) |

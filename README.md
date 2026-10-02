@@ -54,6 +54,17 @@ pixel-pattern-generator/
 
 ## Quick start
 
+### Prerequisites
+
+| | Version | Notes |
+| --- | --- | --- |
+| Python | **3.9+** | Only needed for the backend |
+| Node.js | **18.17+** | `frontend/.nvmrc` pins 20.17.0 — `nvm use` picks it up |
+
+> **Run the two servers in two separate terminals.** Neither command returns to the
+> prompt, so starting the frontend in the same terminal as the backend will look
+> like it hung.
+
 ### 1. Backend — http://localhost:8000
 
 ```bash
@@ -80,12 +91,26 @@ Every control re-runs the backend (debounced) while the previous result stays
 visible, and stale requests are aborted so a slow response can never overwrite a
 newer one.
 
+Check the pill in the header: it should read **“API online”**. It polls
+`/api/health` every 30 seconds, so it doubles as your backend liveness check.
+
 ### 3. Tests
 
 ```bash
 cd backend   && pytest                                      # 151 tests
 cd frontend  && npm run typecheck && npm run lint && npm run build
 ```
+
+### Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| Header says **“API offline”** | The backend isn't reachable on the configured URL. Start it (step 1) and confirm <http://localhost:8000/api/health> returns `{"status":"ok"}`. |
+| Port 8000 already in use | Either free it (`lsof -ti:8000 \| xargs kill`) or run the backend on another port — **and** update `NEXT_PUBLIC_API_URL=http://localhost:8001` in `frontend/.env.local`, then restart the frontend. |
+| `npm run dev` seems to hang | Expected: it's a server. Leave it running and use a second terminal. |
+| Frontend still hits the old backend URL | `NEXT_PUBLIC_*` values are inlined at **build/start** time. Editing `.env.local` requires restarting `npm run dev`. |
+| Want to check the production bundle | `npm run build && npm start` in `frontend/` instead of `npm run dev`. |
+| Stopping the servers | `Ctrl+C` in each terminal, or `pkill -f uvicorn` and `pkill -f 'next dev'`. |
 
 ## API
 
