@@ -8,9 +8,9 @@
 #                     range), so the format allowlist in processor.py is the
 #                     mitigation that keeps PSD/other decoders unreachable.
 # Python 3.10+ is strongly recommended; see the README.
-fastapi==0.115.6
-uvicorn[standard]==0.32.1
+fastapi==0.142.0
+uvicorn[standard]==0.54.0
 python-multipart==0.0.20
-pydantic==2.10.4
+pydantic==2.13.5
 pillow==12.1.1; python_version >= "3.10"
 pillow==11.3.0; python_version < "3.10"
