@@ -223,6 +223,40 @@ def stitch_counts(grid: Sequence[Sequence[int]]) -> Dict[int, int]:
     return counts
 
 
+# --------------------------------------------------------------------------- #
+# Serialisation safety
+# --------------------------------------------------------------------------- #
+
+#: Characters a spreadsheet treats as the start of a formula.  A cell starting
+#: with one of these is executed when the exported CSV is opened in Excel,
+#: LibreOffice or Google Sheets (CSV injection / formula injection).
+_FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+
+
+def csv_safe(value: object) -> str:
+    """Neutralise spreadsheet formula injection in an exported CSV cell.
+
+    Quoting alone is not enough: ``csv.writer`` quotes the field but Excel
+    still evaluates a leading ``=``.  Prefixing with a single quote keeps the
+    text visible while forcing it to be treated as a literal.
+    """
+
+    text = "" if value is None else str(value)
+    if text.startswith(_FORMULA_PREFIXES):
+        return "'" + text
+    return text
+
+
+def markdown_safe(value: object) -> str:
+    """Escape the Markdown control characters in a user supplied string."""
+
+    text = "" if value is None else str(value)
+    for character in ("\\", "`", "*", "_", "{", "}", "[", "]", "(", ")", "#", "+", "-", ".", "!", "|"):
+        text = text.replace(character, "\\" + character)
+    # Newlines would break the table/heading structure.
+    return text.replace("\r", " ").replace("\n", " ")
+
+
 def _legend_rows(
     palette: Sequence[str],
     labels: Sequence[str],
@@ -268,7 +302,9 @@ def grid_to_csv(
 
     buffer = io.StringIO()
     writer = csv.writer(buffer, lineterminator="\n")
-    writer.writerow([title])
+    # Every cell goes through ``csv_safe``: the title is user supplied and a
+    # leading "=" would otherwise be evaluated by spreadsheet software.
+    writer.writerow([csv_safe(title)])
     writer.writerow(["Stitch size", f"{width} x {height} stitches"])
     writer.writerow(["Repeats", f"{repeat_x} x {repeat_y}"])
     writer.writerow(["Total stitches", total])
@@ -277,7 +313,13 @@ def grid_to_csv(
     writer.writerow(["Symbol", "Colour", "Hex", "Stitches", "Percent"])
     for entry in _legend_rows(palette, labels, symbols, grid, repeat_x, repeat_y):
         writer.writerow(
-            [entry["symbol"], entry["label"], entry["hex"], entry["count"], f"{entry['percent']}%"]
+            [
+                entry["symbol"],
+                csv_safe(entry["label"]),
+                entry["hex"],
+                entry["count"],
+                f"{entry['percent']}%",
+            ]
         )
     writer.writerow([])
 
@@ -305,7 +347,7 @@ def grid_to_markdown(
     columns = numbered_labels(width)
     gutter = len(str(height))
 
-    lines = [f"# {title}", ""]
+    lines = [f"# {markdown_safe(title)}", ""]
     lines.append(f"- **Size:** {width} x {height} stitches")
     lines.append(f"- **Repeats:** {repeat_x} x {repeat_y}")
     lines.append(f"- **Total stitches:** {total}")
@@ -316,7 +358,7 @@ def grid_to_markdown(
     lines.append("| :----: | ------ | --- | -------: | ------: |")
     for entry in _legend_rows(palette, labels, symbols, grid, repeat_x, repeat_y):
         lines.append(
-            f"| `{entry['symbol']}` | {entry['label']} | `{entry['hex']}` | "
+            f"| `{entry['symbol']}` | {markdown_safe(entry['label'])} | `{entry['hex']}` | "
             f"{entry['count']} | {entry['percent']}% |"
         )
     lines.append("")
