@@ -1,0 +1,4 @@
+# The app uses the Next.js App Router, so routing is handled by Next itself.
+# This rule only matters for a future client-side route: send unknown paths to
+# the app shell instead of returning a 404.
+/*    /index.html   200

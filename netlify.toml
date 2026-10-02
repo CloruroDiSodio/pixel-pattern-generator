@@ -1,0 +1,38 @@
+# Pixel Art & Pattern Generator — Netlify configuration
+#
+# The Next.js app lives in ./frontend, so Netlify only has to be told where to
+# look. The API host is injected at build time (see [build.environment]).
+
+[build]
+  # Dependencies are installed and `npm run build` runs inside ./frontend.
+  base = "frontend"
+  command = "npm run build"
+  # NOTE: `publish` is resolved relative to `base`, so this is frontend/.next.
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "20.17.0"
+  # Point this at your deployed backend (Render, Railway, Fly.io, ...).
+  # It is inlined into the client bundle, so it must be a full public URL.
+  NEXT_PUBLIC_API_URL = "http://localhost:8000"
+
+[dev]
+  command = "npm run dev"
+  targetPort = 3000
+  port = 8888
+  autoLaunch = false
+
+[[plugins]]
+  package = "@netlify/plugin-nextjs"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+
+[[headers]]
+  for = "/_next/static/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
