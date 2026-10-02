@@ -1,5 +1,7 @@
 # Pixel Art & Pattern Generator
 
+**🌐 Live site: <https://turnipmedia-pixel-pattern-generator.netlify.app/>**
+
 Turn any photo into a **pixel art grid**, quantize it to a retro palette and export a
 **printable cross-stitch / craft pattern** (chart, CSV, Markdown, PNG).
 
