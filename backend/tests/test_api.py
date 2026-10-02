@@ -7,7 +7,9 @@ import io
 import pytest
 from fastapi.testclient import TestClient
 
+from app import main as main_module
 from app.main import app
+from app.processor import ALLOWED_FORMATS
 from conftest import encode, gradient_image, solid_image
 
 client = TestClient(app)
@@ -53,19 +55,148 @@ class TestMetaRoutes:
         assert len(gameboy["colors"]) == 4
         assert gameboy["colors"][0]["label"] == "Darkest Green"
 
-    def test_cors_preflight_is_allowed(self) -> None:
-        response = client.options(
+    def test_cors_defaults_to_localhost_not_wildcard(self) -> None:
+        # A "*" default lets any website drive the API from a visitor's browser.
+        preflight = client.options(
             "/api/transform",
             headers={
                 "Origin": "http://localhost:3000",
                 "Access-Control-Request-Method": "POST",
             },
         )
-        assert response.status_code == 200
-        assert response.headers["access-control-allow-origin"] == "*"
+        assert preflight.status_code == 200
+        assert preflight.headers["access-control-allow-origin"] == "http://localhost:3000"
+
+    def test_cors_refuses_an_unknown_origin(self) -> None:
+        response = client.get(
+            "/api/health", headers={"Origin": "https://evil.example.com"}
+        )
+        assert "access-control-allow-origin" not in response.headers
+
+    def test_security_headers_are_present(self) -> None:
+        response = client.get("/api/health")
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["x-frame-options"] == "DENY"
+        assert response.headers["referrer-policy"] == "no-referrer"
+
+    def test_docs_are_enabled_by_default_for_local_development(self) -> None:
+        assert client.get("/docs").status_code == 200
+        assert client.get("/openapi.json").status_code == 200
 
     def test_openapi_schema_is_generated(self) -> None:
         assert "/api/transform" in client.get("/openapi.json").json()["paths"]
+
+
+class TestSecurityHardening:
+    """Regressions for the OWASP hardening (A02, A03, A05, A06, A09)."""
+
+    def test_psd_is_not_on_the_format_allowlist(self) -> None:
+        # CVE-2026-25990 is an out-of-bounds write in Pillow's PSD decoder.
+        assert "PSD" not in ALLOWED_FORMATS
+
+    @pytest.mark.parametrize("fmt", ["PPM", "ICO", "TGA"])
+    def test_readable_but_non_allowlisted_formats_are_rejected(self, fmt: str) -> None:
+        # Pillow decodes far more than we accept.  These are readable yet not
+        # allowlisted, so they exercise the pre-decode rejection path.
+        buffer = io.BytesIO()
+        solid_image(16, 16).save(buffer, format=fmt)
+
+        response = client.post(
+            "/api/transform",
+            files={"file": (f"image.{fmt.lower()}", io.BytesIO(buffer.getvalue()), "application/octet-stream")},
+        )
+        assert response.status_code == 400, response.text
+        detail = response.json()["detail"]
+        # Rejected on purpose - must not be reported as a decode failure.
+        assert detail.startswith("unsupported image format")
+        assert "could not decode" not in detail
+        assert "BMP" in detail  # the full allowlist is advertised
+
+    @pytest.mark.parametrize("fmt", ["PNG", "JPEG", "GIF", "BMP", "TIFF"])
+    def test_allowed_formats_are_still_accepted(self, fmt: str) -> None:
+        buffer = io.BytesIO()
+        solid_image(32, 32).save(buffer, format=fmt)
+        response = client.post(
+            "/api/transform",
+            files={"file": (f"image.{fmt.lower()}", io.BytesIO(buffer.getvalue()), "application/octet-stream")},
+        )
+        assert response.status_code == 200, response.text
+
+    def test_rate_limit_returns_429_with_retry_after(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(main_module, "RATE_LIMIT_REQUESTS", 3)
+        main_module._rate_buckets.clear()
+
+        headers = {"x-forwarded-for": "203.0.113.9"}
+        statuses = [
+            client.post(
+                "/api/transform",
+                files={"file": ("s.png", io.BytesIO(PNG_BYTES), "image/png")},
+                headers=headers,
+            ).status_code
+            for _ in range(4)
+        ]
+        assert statuses[:3] == [200, 200, 200]
+        assert statuses[3] == 429
+
+        limited = client.post(
+            "/api/transform",
+            files={"file": ("s.png", io.BytesIO(PNG_BYTES), "image/png")},
+            headers=headers,
+        )
+        assert limited.status_code == 429
+        assert int(limited.headers["retry-after"]) > 0
+
+        # A different client has its own bucket.
+        assert (
+            client.post(
+                "/api/transform",
+                files={"file": ("s.png", io.BytesIO(PNG_BYTES), "image/png")},
+                headers={"x-forwarded-for": "203.0.113.10"},
+            ).status_code
+            == 200
+        )
+        main_module._rate_buckets.clear()
+
+    def test_cheap_endpoints_are_not_rate_limited(self) -> None:
+        assert [client.get("/api/health").status_code for _ in range(30)] == [200] * 30
+
+    def test_csv_export_neutralises_formula_injection(self) -> None:
+        payload = {
+            "title": '=cmd|\'/c calc\'!A1',
+            "grid": [[0]],
+            "palette": [{"hex": "#000000", "label": '=HYPERLINK("http://evil","x")'}],
+        }
+        response = client.post("/api/pattern", json=payload)
+        assert response.status_code == 200, response.text
+        body = response.json()
+        # Neutralised by prefixing with a single quote, not merely quoted.
+        assert not body["csv"].splitlines()[0].lstrip('"').startswith("=")
+        assert body["csv"].count("'=") == 2
+
+    def test_markdown_export_escapes_markup(self) -> None:
+        response = client.post(
+            "/api/pattern",
+            json={
+                "title": "# Injected heading",
+                "grid": [[0]],
+                "palette": [{"hex": "#000000", "label": "Normal"}],
+            },
+        )
+        body = response.json()
+        assert not body["markdown"].startswith("# #")
+        assert "\\# Injected heading" in body["markdown"]
+
+    def test_unhandled_errors_do_not_leak_internals(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        def boom(*args: object, **kwargs: object) -> None:
+            raise RuntimeError("secret internal path /etc/passwd")
+
+        monkeypatch.setattr(main_module, "transform_image", boom)
+        response = client.post(
+            "/api/transform", files={"file": ("s.png", io.BytesIO(PNG_BYTES), "image/png")}
+        )
+        assert response.status_code == 500
+        assert response.json() == {"detail": "internal server error"}
+        assert "passwd" not in response.text
 
 
 class TestTransformEndpoint:
