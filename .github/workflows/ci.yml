@@ -11,25 +11,39 @@ concurrency:
 
 jobs:
   backend:
-    name: Backend (pytest)
+    name: Backend (pytest, py${{ matrix.python-version }})
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: backend
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.9 is the oldest supported runtime (Pillow 11.x + the format
+        # allowlist), 3.12 is the modern deploy target (Pillow 12.1.1, which
+        # carries the CVE-2026-25990 fix). Both paths must stay green.
+        python-version: ['3.9', '3.12']
     steps:
       - uses: actions/checkout@v4
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: backend/requirements-dev.txt
+          cache-dependency-path: backend/requirements.txt
 
       - name: Install dependencies
+        # requirements.txt is exact-pinned and carries the Python markers that
+        # select the patched Pillow. requirements.lock (hash-pinned) is a
+        # per-interpreter artifact - see the README - so it cannot be used for a
+        # matrix spanning several Python versions.
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
+
+      - name: Report the resolved image library
+        run: python -c "import PIL; print('Pillow', PIL.__version__)"
 
       - name: Run tests with coverage
         run: pytest --cov=app --cov-report=term-missing --cov-report=xml
@@ -41,9 +55,35 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-coverage
+          name: backend-coverage-py${{ matrix.python-version }}
           path: backend/coverage.xml
           if-no-files-found: ignore
+
+  dependency-integrity:
+    name: Dependencies (hash verified install)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          # The committed lock file was compiled with this interpreter, so its
+          # hash set and python_version markers line up exactly.
+          python-version: '3.9'
+          cache: pip
+          cache-dependency-path: backend/requirements.lock
+
+      - name: Install with hash verification
+        # OWASP A08: every transitive dependency is pinned *and* hashed, so a
+        # swapped or tampered artifact fails the install instead of the build.
+        run: pip install --require-hashes -r requirements.lock
+
+      - name: Smoke test the installed set
+        run: pytest -q
 
   frontend:
     name: Frontend (lint + build)

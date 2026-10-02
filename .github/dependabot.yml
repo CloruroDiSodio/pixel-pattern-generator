@@ -1,0 +1,38 @@
+version: 2
+
+updates:
+  # Backend: FastAPI, Pillow, uvicorn, ...
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      python-minor:
+        patterns:
+          - "fastapi"
+          - "starlette"
+          - "pydantic"
+          - "uvicorn"
+
+  # Frontend: Next.js, React, Tailwind, ...
+  - package-ecosystem: npm
+    directory: /frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      nextjs:
+        patterns:
+          - "next"
+          - "eslint-config-next"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+
+  # Netlify build tooling
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
