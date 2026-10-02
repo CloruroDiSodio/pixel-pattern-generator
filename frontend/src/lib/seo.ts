@@ -6,7 +6,7 @@
  * exports from a layout file.
  */
 
-const DEFAULT_SITE_URL = 'https://pixel-pattern-generator.netlify.app';
+const DEFAULT_SITE_URL = 'https://turnipmedia-pixel-pattern-generator.netlify.app';
 
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? DEFAULT_SITE_URL).replace(/\/+$/, '');
 
