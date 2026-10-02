@@ -15,11 +15,14 @@ from __future__ import annotations
 
 import base64
 import io
+import logging
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
+
+logger = logging.getLogger("app.processor")
 
 from .utils import (
     MAX_COLORS,
@@ -387,6 +390,19 @@ def _select_palette_entries(entries: Sequence[Tuple[str, str]], max_colors: int)
 # --------------------------------------------------------------------------- #
 
 
+#: Formats the service is willing to decode.
+#:
+#: Pillow can open far more than we want to hand to a public endpoint (PSD,
+#: PCX, DDS, FITS, ...).  Some of those decoders have had memory-safety bugs -
+#: CVE-2026-25990 is an out-of-bounds write while loading a crafted PSD, so the
+#: file is rejected *before* ``load()`` ever decodes pixels.  An allowlist is
+#: used instead of a blocklist so new Pillow decoders are safe by default.
+ALLOWED_FORMATS = frozenset({"PNG", "JPEG", "GIF", "WEBP", "BMP", "TIFF"})
+
+#: Human readable version of :data:`ALLOWED_FORMATS` for error messages.
+ALLOWED_FORMATS_HELP = "PNG, JPEG, GIF, WEBP, BMP or TIFF"
+
+
 def _open_image(data: bytes, background: Optional[RGB] = None) -> Image.Image:
     """Decode raw bytes into a fully loaded, EXIF-corrected RGB image.
 
@@ -402,13 +418,35 @@ def _open_image(data: bytes, background: Optional[RGB] = None) -> Image.Image:
         )
 
     Image.MAX_IMAGE_PIXELS = MAX_SOURCE_PIXELS
+    # ``Image.open`` is lazy: it sniffs the header only.  The format is checked
+    # between ``open`` and ``load`` so a decoder we did not ask for is never
+    # invoked - not even on its header.
+    #
+    # The two try blocks are deliberately separate: ``ProcessingError`` derives
+    # from ``ValueError``, so raising it inside the decode block would be caught
+    # by that block's own ``except`` and re-wrapped as "could not decode".
     try:
         image = Image.open(io.BytesIO(data))
-        image.load()
     except UnidentifiedImageError as error:
         raise ProcessingError(
-            "unsupported image format (PNG, JPEG, GIF, BMP, WEBP and TIFF are supported)"
+            f"unsupported image format ({ALLOWED_FORMATS_HELP} are supported)"
         ) from error
+    except (OSError, ValueError, Image.DecompressionBombError) as error:
+        raise ProcessingError(f"could not decode the image: {error}") from error
+
+    detected = (image.format or "").upper()
+    if detected not in ALLOWED_FORMATS:
+        logger.warning(
+            "rejected upload: unsupported format %r (allowed: %s)",
+            detected or "unknown",
+            sorted(ALLOWED_FORMATS),
+        )
+        raise ProcessingError(
+            f"unsupported image format ({ALLOWED_FORMATS_HELP} are supported)"
+        )
+
+    try:
+        image.load()
     except (OSError, ValueError, Image.DecompressionBombError) as error:
         raise ProcessingError(f"could not decode the image: {error}") from error
 
