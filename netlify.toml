@@ -1,7 +1,7 @@
 # Pixel Art & Pattern Generator — Netlify configuration
 #
 # The Next.js app lives in ./frontend, so Netlify only has to be told where to
-# look. The API host is injected at build time (see [build.environment]).
+# look. The backend is a separate service (Render) and is never built here.
 
 [build]
   # Dependencies are installed and `npm run build` runs inside ./frontend.
@@ -12,11 +12,19 @@
 
 [build.environment]
   NODE_VERSION = "20.17.0"
-  # Point this at your deployed backend (Render, Railway, Fly.io, ...).
-  # It is inlined into the client bundle, so it must be a full public URL.
-  NEXT_PUBLIC_API_URL = "http://localhost:8000"
-  # Public origin of this site: canonical URL, Open Graph, robots.txt, sitemap.xml.
-  NEXT_PUBLIC_SITE_URL = "https://pixel-pattern-generator.netlify.app"
+
+  # IMPORTANT - do NOT set NEXT_PUBLIC_API_URL or NEXT_PUBLIC_SITE_URL here.
+  #
+  # netlify.toml overrides the Netlify dashboard when the two conflict, so
+  # hardcoding a placeholder here silently wins over whatever you set in the
+  # UI and the deployed bundle ends up pointing at the placeholder. Both are
+  # baked into the client bundle at build time.
+  #
+  # Set them in Site configuration -> Environment variables instead:
+  #   NEXT_PUBLIC_API_URL   https://<your-api>.onrender.com
+  #   NEXT_PUBLIC_SITE_URL  https://<your-site>.netlify.app
+  #
+  # After changing either one: Deploys -> Clear cache and deploy site.
 
 [dev]
   command = "npm run dev"
@@ -24,8 +32,14 @@
   port = 8888
   autoLaunch = false
 
-[[plugins]]
-  package = "@netlify/plugin-nextjs"
+# No [[plugins]] block on purpose. Netlify runs Next.js through its OpenNext
+# adapter with zero configuration; pinning @netlify/plugin-nextjs opts out of
+# the adapter updates and newer architecture improvements.
+
+# NOTE: there is deliberately no frontend/public/_redirects. The catch-all SPA
+# fallback ("/*  /index.html  200") is for client-side routers. Next.js App
+# Router does its own routing, and on Netlify the rewrite shadows it and the
+# static assets. The app has a single route ("/"), so it is not needed.
 
 [[headers]]
   for = "/*"
