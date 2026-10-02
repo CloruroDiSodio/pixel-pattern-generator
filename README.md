@@ -141,6 +141,7 @@ All payloads are **camelCase** on the wire. Interactive reference: `/docs`.
 | `paletteSort` | enum | `usage` | `usage` · `luminance` · `hex` |
 | `previewScale` | int | `16` | 1–40 pixels per cell in the returned PNG |
 | `gridLines` | bool | `true` | Draw lines on the preview |
+| `preview` | bool | `false` | Include the base64 PNG in the response (see note) |
 
 ```jsonc
 // 200 OK
@@ -150,11 +151,18 @@ All payloads are **camelCase** on the wire. Interactive reference: `/docs`.
   "palette": [{ "hex": "#FAF0D2", "count": 260, "label": "Colour 1" }],
   "grid": [[1, 0, 0, 1]],          // grid[y][x] -> index into palette
   "symbols": ["A", "B"],
-  "previewPng": "data:image/png;base64,...",
   "processingMs": 21,
-  "settings": { "grid_width": 32, "...": "..." }
+  "settings": { "grid_width": 32, "...": "..." },
+  "previewPng": "data:image/png;base64,..."   // only when preview=true
 }
 ```
+
+> **`preview` is opt-in.** A server-rendered PNG is by far the most expensive step
+> and the largest part of the payload, but a browser draws its own canvas from
+> `grid` + `palette`. Measured at 120 columns with `previewScale=24`: **17 ms and
+> 23 KB without it, 97 ms and 91 KB with it.** The studio therefore never asks for
+> it and renders its own PNG on demand for export. Set `preview=true` if you need
+> the raster server-side.
 
 </details>
 
@@ -238,6 +246,30 @@ Netlify, or an nginx `limit_req` zone in front of the service).
   the patched Pillow on 3.10+ and the newest possible (11.3.0) on 3.9. On 3.9 the
   format allowlist is what keeps the vulnerable decoder unreachable. **Use Python
   3.10+ if you can** — CI tests both paths.
+
+## Accessibility, SEO & performance
+
+**Accessibility** — every control has a programmatic label, the file input is a real
+`<label>` rather than a `role="button"` wrapper, form ids contain no spaces, and a
+"Skip to the studio" link jumps past the header. Body text uses `slate-400`
+(6.9:1–7.8:1 against the panel backgrounds); `slate-500` was removed because it
+measured 3.7:1–4.2:1 and failed WCAG AA. The craft chart is a real `<table>` with a
+caption and scoped headers, and is replaced by an explanation above ~12,000 cells so
+neither the browser nor a screen reader has to walk 40,000 nodes.
+
+**SEO** — the page is statically prerendered, so all content is crawlable.
+`src/lib/seo.ts` holds the canonical title, description and keywords, consumed by
+`layout.tsx` (Open Graph, Twitter card, canonical, robots directives,
+`metadataBase`) and by the JSON-LD `SoftwareApplication` block.
+`src/app/robots.ts` and `src/app/sitemap.ts` emit `/robots.txt` and `/sitemap.xml`.
+Set `NEXT_PUBLIC_SITE_URL` to the deployed origin so canonical and OG URLs are
+correct.
+
+**Performance** — the studio never requests the server-side PNG (see the `preview`
+note above), which removes ~75 % of the response body and ~80 % of the server CPU
+per conversion. `PixelCanvas`, `CraftPattern`, `PaletteStrip` and `DownloadMenu` are
+memoised so zooming the canvas or opening the toast does not re-render them.
+Requests are debounced and `AbortController` cancels superseded work.
 
 ## Deployment
 
