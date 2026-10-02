@@ -12,11 +12,15 @@ Routes
 
 from __future__ import annotations
 
+import logging
 import os
-from typing import Annotated, Any, Dict, List, Optional
+import time
+from collections import defaultdict, deque
+from typing import Annotated, Any, Deque, Dict, List, Optional
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from . import __version__
@@ -39,13 +43,73 @@ from .processor import (
 )
 from .utils import DEFAULT_SYMBOLS
 
+logger = logging.getLogger("app.security")
+
+#: Origins allowed when ``CORS_ORIGINS`` is not configured.  Deliberately
+#: localhost-only: an open ``*`` default would let any site drive the API from a
+#: visitor's browser.  Set ``CORS_ORIGINS`` explicitly in production.
+DEFAULT_CORS_ORIGINS = ("http://localhost:3000", "http://127.0.0.1:3000")
+
+#: Sliding-window rate limit for the expensive transform endpoint.
+RATE_LIMIT_REQUESTS = int(os.getenv("RATE_LIMIT_REQUESTS", "20"))
+RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
+
+#: ``/docs`` and ``/redoc`` are a needless information disclosure in production.
+DOCS_ENABLED = os.getenv("ENABLE_DOCS", "true").strip().lower() not in {"0", "false", "no"}
+
+# client IP -> timestamps of recent requests (sliding window).
+_rate_buckets: Dict[str, Deque[float]] = defaultdict(deque)
+
+
+def _client_ip(request: Request) -> str:
+    """Best-effort client identity for rate limiting and audit logs.
+
+    ``X-Forwarded-For`` is only consulted when the app runs behind a proxy that
+    sets it (Render, Netlify); the left-most entry is the original client.
+    """
+
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def check_rate_limit(request: Request) -> Optional[int]:
+    """Sliding-window rate limiter; returns ``Retry-After`` seconds when limited.
+
+    In-memory and therefore per-process: with several uvicorn workers each one
+    keeps its own bucket.  That is acceptable as a baseline, but a shared store
+    (or an edge/CDN rule) is needed for a hard global limit - see the README.
+    """
+
+    now = time.monotonic()
+    bucket = _rate_buckets[_client_ip(request)]
+    while bucket and now - bucket[0] > RATE_LIMIT_WINDOW:
+        bucket.popleft()
+
+    if len(bucket) >= RATE_LIMIT_REQUESTS:
+        retry_after = int(RATE_LIMIT_WINDOW - (now - bucket[0])) + 1
+        logger.warning(
+            "rate limit exceeded for %s (%d requests / %ds)", _client_ip(request), len(bucket), RATE_LIMIT_WINDOW
+        )
+        return max(retry_after, 1)
+
+    bucket.append(now)
+    return None
+
 
 def _cors_origins() -> List[str]:
     """Read the allowed origins from ``CORS_ORIGINS`` (comma separated)."""
 
-    raw = os.getenv("CORS_ORIGINS", "*").strip()
+    raw = os.getenv("CORS_ORIGINS", "").strip()
+    if not raw:
+        logger.warning(
+            "CORS_ORIGINS is not set - falling back to the localhost defaults. "
+            "Set it to your deployed front-end origin in production."
+        )
+        return list(DEFAULT_CORS_ORIGINS)
     origins = [origin.strip() for origin in raw.split(",") if origin.strip()]
-    return origins or ["*"]
+    return origins or list(DEFAULT_CORS_ORIGINS)
 
 
 app = FastAPI(
@@ -56,8 +120,10 @@ app = FastAPI(
         "patterns. Heavy lifting (resizing, quantization, dithering, matrix "
         "generation) happens here with Pillow."
     ),
-    docs_url="/docs",
-    redoc_url="/redoc",
+    # Disabled in production: the schema is a free reconnaissance tool.
+    docs_url="/docs" if DOCS_ENABLED else None,
+    redoc_url="/redoc" if DOCS_ENABLED else None,
+    openapi_url="/openapi.json" if DOCS_ENABLED else None,
 )
 
 app.add_middleware(
@@ -67,6 +133,23 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next: Any) -> Any:
+    """Attach conservative security headers and surface unhandled failures safely."""
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Never leak a stack trace or internal path to the client.
+        logger.exception("unhandled error while serving %s %s", request.method, request.url.path)
+        return JSONResponse(status_code=500, content={"detail": "internal server error"})
+
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    return response
 
 
 # --------------------------------------------------------------------------- #
@@ -225,12 +308,24 @@ async def transform(
         int, Form(alias="previewScale", ge=1, le=MAX_PREVIEW_SCALE)
     ] = 16,
     grid_lines: Annotated[bool, Form(alias="gridLines")] = True,
+    request: Request = None,  # type: ignore[assignment]
 ) -> TransformResponse:
     """Pixelate an uploaded image and return the grid, palette and preview PNG.
 
     Options travel as ``multipart/form-data`` fields in camelCase; anything
     omitted falls back to the default shown above.
     """
+
+    # The transform endpoint is the expensive one (resize + quantize + dither),
+    # so it is the one that gets rate limited.
+    if request is not None:
+        retry_after = check_rate_limit(request)
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=429,
+                detail="too many requests - please wait a moment before generating another pattern",
+                headers={"Retry-After": str(retry_after)},
+            )
 
     request_options = TransformOptions(
         grid_width=grid_width,
@@ -250,6 +345,9 @@ async def transform(
     try:
         result = transform_image(data, request_options)
     except ProcessingError as error:
+        logger.warning(
+            "rejected transform request from %s: %s", _client_ip(request), error
+        )
         raise HTTPException(status_code=400, detail=str(error)) from error
 
     return TransformResponse(**result.to_dict())
@@ -274,6 +372,7 @@ def pattern(payload: PatternRequest) -> PatternResponse:
             repeat_y=payload.repeat_y,
         )
     except ProcessingError as error:
+        logger.warning("rejected pattern request: %s", error)
         raise HTTPException(status_code=400, detail=str(error)) from error
 
     return PatternResponse(
