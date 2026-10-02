@@ -279,10 +279,31 @@ Requests are debounced and `AbortController` cancels superseded work.
 
 - base directory `frontend`, build command `npm run build`, publish `.next`
   (note: `publish` is resolved **relative to** `base`)
-- Set **`NEXT_PUBLIC_API_URL`** to your deployed backend (Netlify UI → *Environment
-  variables*); it is inlined into the client bundle at build time, so it must be a
-  full public URL and never a `/`-prefixed path
-- Keep the `@netlify/plugin-nextjs` entry, or enable the Next.js runtime in the UI
+- **Only `frontend/` is built.** The backend is a separate Render service and is
+  never part of the Netlify build.
+- There is no `[[plugins]]` block: Netlify runs Next.js through its OpenNext
+  adapter with zero configuration, and pinning `@netlify/plugin-nextjs` opts out
+  of adapter updates.
+
+**Set these two variables in the Netlify UI**, *not* in `netlify.toml`:
+
+| Variable | Value |
+| --- | --- |
+| `NEXT_PUBLIC_API_URL` | `https://your-api.onrender.com` |
+| `NEXT_PUBLIC_SITE_URL` | `https://your-site.netlify.app` |
+
+> **Site configuration → Environment variables**, then
+> **Deploys → Clear cache and deploy site.**
+>
+> Do not put these in `netlify.toml`: **netlify.toml overrides the Netlify
+> dashboard when the two conflict**, so a placeholder value there silently wins
+> over whatever you set in the UI and the deployed bundle keeps pointing at the
+> placeholder. Both values are inlined into the client bundle at build time, so
+> changing them requires a rebuild, not just a restart.
+
+To confirm which URL is actually deployed, view source on your site and search
+the JS bundle for `localhost:8000` — if it is there, the wrong value was baked
+in.
 
 ### Backend → Render (or any container host)
 
