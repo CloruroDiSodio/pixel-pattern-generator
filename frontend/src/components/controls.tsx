@@ -1,5 +1,15 @@
 'use client';
 
+/**
+ * `label` is used verbatim in the visible text but must not leak into an id:
+ * `"Grid width"` would produce `id="slider-Grid width"`. HTML ids may not
+ * contain spaces, and assistive technology matching `htmlFor` against `id` is
+ * only reliable when the value is a clean token.
+ */
+function toFieldId(prefix: string, label: string): string {
+  return `${prefix}-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+}
+
 interface SliderProps {
   label: string;
   value: number;
@@ -24,9 +34,12 @@ export function Slider({
   disabled,
   onChange,
 }: SliderProps) {
+  const id = toFieldId('slider', label);
+  const hintId = hint ? `${id}-hint` : undefined;
+
   return (
     <div>
-      <label className="field-label" htmlFor={`slider-${label}`}>
+      <label className="field-label" htmlFor={id}>
         <span>{label}</span>
         <span className="font-mono text-[11px] normal-case tracking-normal text-accent-soft">
           {value}
@@ -34,16 +47,22 @@ export function Slider({
         </span>
       </label>
       <input
-        id={`slider-${label}`}
+        id={id}
         type="range"
         min={min}
         max={max}
         step={step}
         value={value}
         disabled={disabled}
+        aria-describedby={hintId}
+        aria-valuetext={`${value}${suffix}`}
         onChange={(event) => onChange(Number(event.target.value))}
       />
-      {hint ? <p className="mt-1 text-[11px] text-slate-500">{hint}</p> : null}
+      {hint ? (
+        <p id={hintId} className="mt-1 text-[11px] text-slate-400">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -66,7 +85,9 @@ export function Select<T extends string>({
   disabled,
   onChange,
 }: SelectProps<T>) {
-  const id = `select-${label}`;
+  const id = toFieldId('select', label);
+  const hintId = hint ? `${id}-hint` : undefined;
+
   return (
     <div>
       <label className="field-label" htmlFor={id}>
@@ -77,6 +98,7 @@ export function Select<T extends string>({
         className="select"
         value={value}
         disabled={disabled}
+        aria-describedby={hintId}
         onChange={(event) => onChange(event.target.value as T)}
       >
         {options.map((option) => (
@@ -85,7 +107,11 @@ export function Select<T extends string>({
           </option>
         ))}
       </select>
-      {hint ? <p className="mt-1 text-[11px] text-slate-500">{hint}</p> : null}
+      {hint ? (
+        <p id={hintId} className="mt-1 text-[11px] text-slate-400">
+          {hint}
+        </p>
+      ) : null}
     </div>
   );
 }

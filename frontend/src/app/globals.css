@@ -53,7 +53,7 @@
   .select,
   .text-input {
     @apply w-full rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-slate-100
-      transition placeholder:text-slate-500 hover:border-ink-500
+      transition placeholder:text-slate-400 hover:border-ink-500
       focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
   }
 

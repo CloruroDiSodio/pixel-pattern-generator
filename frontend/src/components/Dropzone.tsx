@@ -46,17 +46,14 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
 
   return (
     <div className="space-y-3">
+      {/*
+        The visual frame is a plain <div>: it only handles drag/drop/paste.
+        Previously it carried role="button" and wrapped a real <button>, which
+        nests one interactive control inside another - invalid, and it made
+        keyboard focus order confusing. The <label> below is the single
+        accessible control.
+      */}
       <div
-        role="button"
-        tabIndex={0}
-        aria-label="Upload an image"
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(event) => {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
         onDragOver={(event) => {
           event.preventDefault();
           setDragging(true);
@@ -64,9 +61,9 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         onPaste={handlePaste}
-        className={`flex min-h-[13rem] cursor-pointer flex-col items-center justify-center gap-3 rounded-2xl
+        className={`flex min-h-[13rem] flex-col items-center justify-center gap-3 rounded-2xl
           border-2 border-dashed p-6 text-center transition
-          ${dragging ? 'border-accent bg-accent/10' : 'border-ink-600 bg-ink-900/40 hover:border-ink-500'}`}
+          ${dragging ? 'border-accent bg-accent/10' : 'border-ink-600 bg-ink-900/40'}`}
       >
         {image ? (
           <>
@@ -78,12 +75,24 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
             />
             <div className="text-sm text-slate-300">
               <span className="font-medium text-white">{image.name}</span>
-              <span className="text-slate-500">
+              <span className="text-slate-400">
                 {' '}
                 · {image.width}×{image.height} · {formatBytes(image.size)}
               </span>
             </div>
-            <span className="text-xs text-slate-500">Drop another image or click to replace</span>
+            <label
+              htmlFor="dropzone-file-input"
+              className="btn btn-primary cursor-pointer"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  inputRef.current?.click();
+                }
+              }}
+            >
+              Replace image
+            </label>
           </>
         ) : (
           <>
@@ -94,27 +103,31 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
               <p className="text-sm font-medium text-white">
                 Drop an image here, paste it, or click to browse
               </p>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="mt-1 text-xs text-slate-400">
                 PNG, JPEG, GIF, WEBP, BMP or TIFF · up to {MAX_FILE_BYTES / (1024 * 1024)} MB
               </p>
             </div>
-            <button
-              type="button"
-              className="btn btn-primary"
-              onClick={(event) => {
-                event.stopPropagation();
-                inputRef.current?.click();
+            <label
+              htmlFor="dropzone-file-input"
+              className="btn btn-primary cursor-pointer"
+              tabIndex={0}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault();
+                  inputRef.current?.click();
+                }
               }}
             >
               Choose a file
-            </button>
+            </label>
           </>
         )}
 
         <input
           ref={inputRef}
+          id="dropzone-file-input"
           type="file"
-          className="hidden"
+          className="sr-only"
           accept={ACCEPTED_TYPES.join(',')}
           onChange={(event) => {
             void onFile(event.target.files?.[0]);
