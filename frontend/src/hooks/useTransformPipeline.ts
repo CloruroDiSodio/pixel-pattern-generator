@@ -19,6 +19,9 @@ interface UseTransformPipeline {
   reload: () => void;
 }
 
+/** Exported so the page can type its props without repeating the shape. */
+export type TransformPipeline = UseTransformPipeline;
+
 const isAbort = (error: unknown): boolean =>
   error instanceof DOMException && error.name === 'AbortError';
 

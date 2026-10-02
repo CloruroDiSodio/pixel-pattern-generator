@@ -15,6 +15,8 @@
   # Point this at your deployed backend (Render, Railway, Fly.io, ...).
   # It is inlined into the client bundle, so it must be a full public URL.
   NEXT_PUBLIC_API_URL = "http://localhost:8000"
+  # Public origin of this site: canonical URL, Open Graph, robots.txt, sitemap.xml.
+  NEXT_PUBLIC_SITE_URL = "https://pixel-pattern-generator.netlify.app"
 
 [dev]
   command = "npm run dev"

@@ -12,6 +12,11 @@ import type {
   UploadedImage,
 } from '@/types';
 
+interface SelectOption<T extends string> {
+  value: T;
+  label: string;
+}
+
 interface SettingsPanelProps {
   settings: TransformSettings;
   onChange: <K extends keyof TransformSettings>(key: K, value: TransformSettings[K]) => void;
@@ -48,7 +53,8 @@ const SORT_LABELS: Record<PaletteSort, string> = {
   hex: 'Alphabetical',
 };
 
-const toOptions = <T extends string>(labels: Record<T, string>): Array<{ value: T; label: string }> =>
+/** The `Set` is normalised away before comparison so no shared helper leaks in. */
+const toOptions = <T extends string>(labels: Record<T, string>): SelectOption<T>[] =>
   (Object.entries(labels) as Array<[T, string]>).map(([value, label]) => ({ value, label }));
 
 /** All conversion knobs for the pixel pipeline. */
@@ -147,7 +153,7 @@ export default function SettingsPanel({
             disabled={disabled}
             onChange={(event) => onChange('custom_palette', event.target.value)}
           />
-          <p className="mt-1 text-[11px] text-slate-500">
+          <p className="mt-1 text-[11px] text-slate-400">
             Comma separated hex colours, up to {limits.maxColors}.
           </p>
         </div>
