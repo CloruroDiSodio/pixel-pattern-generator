@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 
 import pytest
 from fastapi.testclient import TestClient
@@ -207,8 +208,24 @@ class TestTransformEndpoint:
         assert body["originalWidth"] == 64
         assert body["originalHeight"] == 32
         assert len(body["palette"]) == 1
-        assert body["previewPng"].startswith("data:image/png;base64,")
         assert body["processingMs"] >= 0
+
+    def test_preview_png_is_omitted_by_default(self) -> None:
+        # The browser draws its own canvas, so the base64 PNG is pure overhead.
+        assert "previewPng" not in upload(gridWidth=16)
+
+    def test_preview_png_is_returned_when_requested(self) -> None:
+        body = upload(gridWidth=16, preview="true", previewScale=4)
+        assert body["previewPng"].startswith("data:image/png;base64,")
+
+    def test_preview_flag_shrinks_the_payload(self) -> None:
+        with_preview = json.dumps(upload(gridWidth=64, preview="true", previewScale=20))
+        without_preview = json.dumps(upload(gridWidth=64, preview="false", previewScale=20))
+        # The base64 PNG is pure overhead for the studio; without it the payload
+        # is just the grid, palette and settings.
+        assert without_preview < with_preview
+        assert "previewPng" not in without_preview
+        assert with_preview.count("data:image/png;base64") == 1
 
     def test_camel_case_form_fields_are_accepted(self) -> None:
         body = upload(gridWidth=16, maxColors=8, resizeMode="sample", paletteSort="hex")
@@ -233,8 +250,9 @@ class TestTransformEndpoint:
         assert all(0 <= cell < size for row in body["grid"] for cell in row)
 
     def test_grid_lines_flag_is_honoured(self) -> None:
-        assert upload(gridWidth=8, previewScale=6, gridLines=False)["previewPng"]
-        assert upload(gridWidth=8, previewScale=6, gridLines=True)["previewPng"]
+        with_lines = upload(gridWidth=8, preview="true", previewScale=6, gridLines=True)
+        without_lines = upload(gridWidth=8, preview="true", previewScale=6, gridLines=False)
+        assert with_lines["previewPng"] != without_lines["previewPng"]
 
     def test_jpeg_upload_is_accepted(self) -> None:
         response = client.post(

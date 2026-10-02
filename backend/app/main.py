@@ -173,9 +173,12 @@ class TransformResponse(BaseModel):
     palette: List[PaletteColorModel]
     grid: List[List[int]]
     symbols: List[str]
-    previewPng: str
     processingMs: int
     settings: Dict[str, Any]
+    #: Only present when the request asked for it with ``preview=true``. The
+    #: browser draws its own canvas from ``grid`` + ``palette``, so shipping a
+    #: base64 PNG on every request would be pure overhead.
+    previewPng: Optional[str] = None
 
 
 class PaletteInfoModel(BaseModel):
@@ -290,7 +293,14 @@ def palettes() -> PalettesResponse:
     )
 
 
-@app.post("/api/transform", response_model=TransformResponse, tags=["transform"])
+@app.post(
+    "/api/transform",
+    response_model=TransformResponse,
+    # Drops ``previewPng`` entirely when it was not rendered, rather than
+    # emitting `"previewPng": null`` for every response.
+    response_model_exclude_none=True,
+    tags=["transform"],
+)
 async def transform(
     file: Annotated[UploadFile, File(description="Image to pixelate (PNG, JPEG, GIF, BMP, WEBP, TIFF)")],
     grid_width: Annotated[
@@ -308,6 +318,8 @@ async def transform(
         int, Form(alias="previewScale", ge=1, le=MAX_PREVIEW_SCALE)
     ] = 16,
     grid_lines: Annotated[bool, Form(alias="gridLines")] = True,
+    preview: Annotated[bool, Form()] = False,
+    # Declared after the defaulted form fields, hence the None default.
     request: Request = None,  # type: ignore[assignment]
 ) -> TransformResponse:
     """Pixelate an uploaded image and return the grid, palette and preview PNG.
@@ -339,6 +351,7 @@ async def transform(
         palette_sort=palette_sort,
         preview_scale=preview_scale,
         grid_lines=grid_lines,
+        preview=preview,
     )
 
     data = await file.read()

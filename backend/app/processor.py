@@ -208,9 +208,16 @@ class TransformOptions:
     palette_sort: str = "usage"
     preview_scale: int = 16
     grid_lines: bool = True
+    #: Render a server-side PNG preview. Off by default: the data URI can be
+    #: megabytes for a 200x200 grid at 40x, and the browser draws the canvas
+    #: from ``grid`` + ``palette`` anyway. API consumers that want the PNG can
+    #: opt in with ``preview=true``.
+    preview: bool = True
 
     def validate(self) -> "TransformOptions":
         """Normalise and range-check the options, raising ``ProcessingError``."""
+
+        self.preview = bool(self.preview)
 
         self.grid_width = _as_int(self.grid_width, "grid_width", MIN_GRID_SIZE, MAX_GRID_SIZE)
         self.max_colors = _as_int(self.max_colors, "max_colors", 2, MAX_COLORS)
@@ -273,7 +280,9 @@ class TransformResult:
     settings: Dict[str, object] = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, object]:
-        return {
+        # ``previewPng`` is only serialised when it was actually rendered, so
+        # opting out removes it from the payload instead of sending "".
+        payload: Dict[str, object] = {
             "width": self.width,
             "height": self.height,
             "originalWidth": self.original_width,
@@ -281,10 +290,12 @@ class TransformResult:
             "palette": [asdict(color) for color in self.palette],
             "grid": self.grid,
             "symbols": self.symbols,
-            "previewPng": self.preview_png,
             "processingMs": self.processing_ms,
             "settings": self.settings,
         }
+        if self.preview_png:
+            payload["previewPng"] = self.preview_png
+        return payload
 
 
 @dataclass
@@ -726,7 +737,9 @@ def transform_image(data: bytes, options: Optional[TransformOptions] = None) -> 
 
     hexes = [color.hex for color in palette]
     symbols = assign_symbols(hexes)
-    preview_png = render_preview(grid, hexes, resolved.preview_scale, resolved.grid_lines)
+    # Rendering the PNG is the single most expensive step left, and the UI does
+    # not need it: the canvas is drawn client-side from the grid.
+    preview_png = render_preview(grid, hexes, resolved.preview_scale, resolved.grid_lines) if resolved.preview else ""
 
     return TransformResult(
         width=len(grid[0]),

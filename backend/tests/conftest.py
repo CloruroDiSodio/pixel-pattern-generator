@@ -67,6 +67,22 @@ def rgba_image(width: int = 16, height: int = 16) -> Image.Image:
     return image
 
 
+@pytest.fixture(autouse=True)
+def reset_rate_limiter():
+    """Give every test an empty rate-limit bucket.
+
+    The limiter is module-level state keyed by client IP, and the test client
+    always reports the same one - without this, a few extra requests in an
+    unrelated test start returning 429 and the suite fails mysteriously.
+    """
+
+    from app import main
+
+    main._rate_buckets.clear()
+    yield
+    main._rate_buckets.clear()
+
+
 @pytest.fixture
 def png_bytes() -> bytes:
     return encode(two_tone_image())
