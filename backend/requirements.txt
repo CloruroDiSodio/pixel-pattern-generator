@@ -1,6 +1,16 @@
 # Runtime dependencies for the Pixel Art & Pattern Generator API.
+#
+# Versions are exact-pinned. Pillow additionally carries a Python-version marker
+# because CVE-2026-25990 (out-of-bounds write when decoding a crafted PSD) is
+# fixed in 12.1.1, and every 12.x release requires Python >= 3.10:
+#   - Python 3.10+ -> patched Pillow.
+#   - Python 3.9   -> newest available (11.3.0, still inside the affected
+#                     range), so the format allowlist in processor.py is the
+#                     mitigation that keeps PSD/other decoders unreachable.
+# Python 3.10+ is strongly recommended; see the README.
 fastapi==0.115.6
 uvicorn[standard]==0.32.1
 python-multipart==0.0.20
 pydantic==2.10.4
-pillow==11.0.0
+pillow==12.1.1; python_version >= "3.10"
+pillow==11.3.0; python_version < "3.10"
