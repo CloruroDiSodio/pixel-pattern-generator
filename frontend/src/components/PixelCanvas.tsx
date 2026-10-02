@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 import type { PaletteColor } from '@/types';
 
@@ -24,7 +24,7 @@ interface Hover {
  * A canvas (instead of a grid of divs) keeps 200×200 previews smooth, and
  * drawing is done imperatively so React only re-renders on data changes.
  */
-export default function PixelCanvas({
+function PixelCanvas({
   grid,
   palette,
   zoom,
@@ -145,3 +145,7 @@ export default function PixelCanvas({
     </div>
   );
 }
+
+// Repaints up to 200x200 cells, so it must not re-render when unrelated
+// parent state (zoom, toast, view tab) changes.
+export default memo(PixelCanvas);

@@ -31,12 +31,6 @@ export function downloadText(text: string, filename: string, mime: string): void
   downloadBlob(new Blob([text], { type: `${mime};charset=utf-8` }), filename);
 }
 
-/** Download a `data:` URI (the backend preview PNG). */
-export async function downloadDataUri(dataUri: string, filename: string): Promise<void> {
-  const response = await fetch(dataUri);
-  downloadBlob(await response.blob(), filename);
-}
-
 export interface RenderGridOptions {
   grid: number[][];
   palette: PaletteColor[];

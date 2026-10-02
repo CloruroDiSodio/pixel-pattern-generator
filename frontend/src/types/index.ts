@@ -31,8 +31,14 @@ export interface TransformResult {
   grid: number[][];
   /** Chart symbol per palette index. */
   symbols: string[];
-  /** `data:image/png;base64,...` rendered by the backend. */
-  previewPng: string;
+  /**
+   * `data:image/png;base64,...` rendered by the backend.
+   *
+   * Optional: the API only produces it when the request sets `preview=true`.
+   * The studio renders its own canvas from `grid` + `palette`, so it never
+   * asks for it.
+   */
+  previewPng?: string;
   processingMs: number;
   settings: TransformSettings & Record<string, unknown>;
 }

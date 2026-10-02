@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { memo, useState } from 'react';
 
 import { contrastText } from '@/lib/download';
 import type { PaletteColor } from '@/types';
@@ -13,7 +13,7 @@ interface PaletteStripProps {
 }
 
 /** The generated palette with per-colour usage percentages. */
-export default function PaletteStrip({ palette, symbols, totalCells, onSelect }: PaletteStripProps) {
+function PaletteStrip({ palette, symbols, totalCells, onSelect }: PaletteStripProps) {
   const [hovered, setHovered] = useState<number | null>(null);
 
   if (palette.length === 0) return null;
@@ -21,7 +21,7 @@ export default function PaletteStrip({ palette, symbols, totalCells, onSelect }:
   return (
     <div>
       <h3 className="field-label">
-        Palette <span className="font-mono text-[11px] normal-case text-slate-500">{palette.length} colours</span>
+        Palette <span className="font-mono text-[11px] normal-case text-slate-400">{palette.length} colours</span>
       </h3>
       <ul className="flex flex-wrap gap-2">
         {palette.map((color, index) => {
@@ -59,10 +59,12 @@ export default function PaletteStrip({ palette, symbols, totalCells, onSelect }:
           <span className="font-mono">{palette[hovered].hex}</span> · {palette[hovered].count} cells
         </p>
       ) : (
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-slate-400">
           Click a swatch to copy its hex value.
         </p>
       )}
     </div>
   );
 }
+
+export default memo(PaletteStrip);

@@ -1,10 +1,7 @@
-'use client';
-
-import { useState } from 'react';
+import { memo, useState } from 'react';
 
 import {
   downloadBlob,
-  downloadDataUri,
   downloadText,
   renderGridToPng,
   slugify,
@@ -21,7 +18,7 @@ interface DownloadMenuProps {
 const EXPORT_SCALES = [16, 32, 64, 128] as const;
 
 /** Export buttons for the PNG, CSV, Markdown and JSON artefacts. */
-export default function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps) {
+function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps) {
   const [scale, setScale] = useState<number>(32);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -57,13 +54,9 @@ export default function DownloadMenu({ transform, pattern, title, disabled }: Do
         <button
           type="button"
           className="btn btn-primary"
-          onClick={() => void downloadDataUri(transform.previewPng, `${base}-preview.png`).then(() => setMessage('Preview saved.'))}
+          onClick={() => void exportPng()}
           disabled={disabled || busy}
         >
-          ⬇ PNG preview
-        </button>
-
-        <button type="button" className="btn" onClick={() => void exportPng()} disabled={disabled || busy}>
           ⬇ PNG {scale}×
         </button>
 
@@ -124,3 +117,5 @@ export default function DownloadMenu({ transform, pattern, title, disabled }: Do
     </div>
   );
 }
+
+export default memo(DownloadMenu);
