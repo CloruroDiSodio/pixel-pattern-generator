@@ -17,7 +17,7 @@ backend/
 │   ├── conftest.py         # deterministic sample-image fixtures
 │   ├── test_utils.py       # 36 tests — colour maths, parsing, serialisation
 │   ├── test_processor.py   # 79 tests — pipeline, dithering, palettes, patterns
-│   └── test_api.py         # 36 tests — every route, status codes, CORS
+│   └── test_api.py         # 53 tests — every route, status codes, CORS, hardening
 ├── pytest.ini
 ├── requirements.txt     # runtime deps
 └── requirements-dev.txt # + pytest, pytest-cov, httpx
@@ -54,16 +54,19 @@ Keep this running in its own terminal — the Next.js front-end (`../frontend`, 
 | `HOST` | `0.0.0.0` | Bind address (`python -m app.main` only) |
 | `PORT` | `8000` | Bind port (`python -m app.main` only) |
 | `RELOAD` | – | Any value enables auto-reload |
-| `CORS_ORIGINS` | `*` | Comma-separated list of allowed origins |
+| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed origins. **Set this in production** — a warning is logged while it is unset. |
+| `ENABLE_DOCS` | `true` | Set `false` to remove `/docs`, `/redoc` and `/openapi.json`. |
+| `RATE_LIMIT_REQUESTS` | `20` | Transform requests allowed per window, per client. |
+| `RATE_LIMIT_WINDOW` | `60` | Rate limit window in seconds. |
 
 ## Test
 
 ```bash
-pytest                                   # 151 tests
+pytest                                   # 168 tests
 pytest --cov=app --cov-report=term-missing
 ```
 
-Current coverage: **98 %** (`app/main.py` 100 %, `app/processor.py` 97 %,
+Current coverage: **97 %** (`app/main.py` 98 %, `app/processor.py` 97 %,
 `app/utils.py` 98 %).
 
 ## Endpoints
@@ -107,14 +110,19 @@ curl -X POST http://localhost:8000/api/pattern \
 | --- | --- |
 | Upload size | 15 MB |
 | Source pixels | 40 MP (decompression-bomb guard) |
+| Accepted formats | PNG, JPEG, GIF, WEBP, BMP, TIFF (allowlist, checked before decoding) |
 | Grid width | 4–200 cells |
 | Palette size | 2–40 colours (40 chart symbols) |
 | Preview scale | 1–40 px per cell |
 | Pattern repeats | 1–20 per axis |
+| Transform rate limit | 20 requests / 60 s per client |
 
 Every user-triggerable failure raises `ProcessingError`, which the HTTP layer turns
 into a `400` with a human-readable message; out-of-range numbers are rejected by
 Pydantic with a `422`.
+
+See the root [Security section](../README.md#security) for the OWASP Top 10
+breakdown, the image-format allowlist rationale and the known limitations.
 
 ## Notes on Pillow behaviour
 
@@ -138,6 +146,17 @@ from the front — every bundled palette is ordered dark-first, so a naive "firs
 slice would hand back five near-black swatches and flatten the image to a single
 colour. The surviving entries keep their original order, so palette indexes and
 colour labels stay stable.
+
+## Security controls
+
+| Control | Env var | Default |
+| --- | --- | --- |
+| Origin allowlist | `CORS_ORIGINS` | `http://localhost:3000` (localhost only — set it in production) |
+| API docs | `ENABLE_DOCS` | `true` (set `false` in production) |
+| Transform rate limit | `RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW` | `20` requests / `60` s per client |
+
+Uploads are decoded from an allowlist of formats and rejected **before** any pixel
+data is decoded — see the root [Security section](../README.md#security).
 
 ## Deploying to Render
 

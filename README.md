@@ -58,7 +58,7 @@ pixel-pattern-generator/
 
 | | Version | Notes |
 | --- | --- | --- |
-| Python | **3.9+** | Only needed for the backend |
+| Python | **3.10+** (3.9 works) | 3.10+ gets the patched Pillow; see [Security](#security) |
 | Node.js | **18.17+** | `frontend/.nvmrc` pins 20.17.0 — `nvm use` picks it up |
 
 > **Run the two servers in two separate terminals.** Neither command returns to the
@@ -97,7 +97,7 @@ Check the pill in the header: it should read **“API online”**. It polls
 ### 3. Tests
 
 ```bash
-cd backend   && pytest                                      # 151 tests
+cd backend   && pytest                                      # 168 tests
 cd frontend  && npm run typecheck && npm run lint && npm run build
 ```
 
@@ -184,6 +184,61 @@ A `/api/transform` response can be fed straight back in — the UI does exactly 
 | `400` | Unsupported image, empty/oversized upload, unknown option value, grid referencing a missing palette index |
 | `422` | Missing file or a number outside its documented range (FastAPI validation) |
 
+## Security
+
+This project is built against the **OWASP Top 10 (2025)**. OWASP does not offer
+certification, so rather than claim compliance blindly, here is exactly where each
+category stands.
+
+| # | Category | How it is addressed |
+| --- | --- | --- |
+| A01 | Broken Access Control | The API is intentionally public and completely stateless — no accounts, no sessions, no stored user data, no database. There is nothing to authorize, so the residual risk is resource abuse, handled by rate limiting (see below). |
+| A02 | Security Misconfiguration | `CORS_ORIGINS` no longer defaults to `*`; it falls back to `http://localhost:3000` and logs a warning until you set it. `/docs`, `/redoc` and `/openapi.json` are disabled with `ENABLE_DOCS=false`. Responses carry `X-Content-Type-Options`, `X-Frame-Options` and `Referrer-Policy`. `poweredByHeader` is off. |
+| A03 | Software Supply Chain Failures | All versions exact-pinned. `requirements.lock` additionally hashes every transitive dependency and CI installs it with `--require-hashes`. Dependabot tracks pip, npm and GitHub Actions. See the Pillow note below. |
+| A04 | Cryptographic Failures | No secrets, tokens or personal data are stored or logged; no data at rest; TLS is terminated by the hosting platform. |
+| A05 | Injection | No SQL, no shell, no `eval` — the API never reaches a database or spawns a process. React escapes by default. Exported CSV cells are neutralised against spreadsheet formula injection and the Markdown export escapes control characters. |
+| A06 | Insecure Design | Uploads are capped at 15 MB, grids at 200 cells, palettes at 40 colours, and the source image at 40 MP (decompression-bomb guard). The expensive transform endpoint is rate limited. Only an allowlist of image formats is ever decoded. |
+| A07 | Authentication Failures | Not applicable — there are no credentials, accounts or sessions to protect. |
+| A08 | Software/Data Integrity Failures | Hash-pinned dependency install in CI, exact version pins in both ecosystems, and a CI gate that must pass before merge. |
+| A09 | Security Logging & Monitoring | Rejected uploads, unsupported formats, invalid pattern payloads and rate-limit hits are logged at `WARNING` with the client address. Unhandled exceptions are logged server-side and returned to the client as a bare `500` — never a stack trace. |
+| A10 | Mishandling of Exceptional Conditions | Every user-triggerable failure raises `ProcessingError` and becomes a `400` with a readable message; out-of-range numbers become `422`. |
+
+### Image decoding
+
+Uploads are decoded from an **allowlist** (`PNG`, `JPEG`, `GIF`, `WEBP`, `BMP`,
+`TIFF`). The format is checked immediately after `Image.open()` — which only sniffs
+the header — and **before** `load()` decodes any pixels, so a decoder is never
+invoked for a file we did not ask for. This is deliberately an allowlist rather
+than a blocklist, so newly added Pillow decoders are safe by default.
+
+This matters concretely: **CVE-2026-25990** is an out-of-bounds write in Pillow's
+PSD decoder, reachable by any anonymous visitor uploading a crafted `.psd`. The
+allowlist closes that path regardless of the installed Pillow version.
+
+### Rate limiting
+
+`POST /api/transform` allows **20 requests per 60 seconds per client**, returning
+`429` with a `Retry-After` header. Tune with `RATE_LIMIT_REQUESTS` and
+`RATE_LIMIT_WINDOW`.
+
+The bucket is in-memory and therefore **per process**: with several uvicorn workers
+each one keeps its own counter, so the effective global limit is
+`limit × workers`. For a hard limit, also enforce limits at the edge (Cloudflare,
+Netlify, or an nginx `limit_req` zone in front of the service).
+
+### Known limitations
+
+- **`next@14.x` is an unsupported release line.** It is currently at the patch level
+  for every published advisory, but Next.js lists 14.x as unsupported, so it will
+  receive no further security fixes. The upgrade to 15.x/16.x is tracked as separate
+  work; our static export uses no Server Functions, which is why the React Server
+  Components advisories are not reachable in this topology.
+- **Python 3.9 cannot receive a patched Pillow.** The CVE-2026-25990 fix ships in
+  12.1.1 and every 12.x release requires Python ≥ 3.10, so `requirements.txt` pins
+  the patched Pillow on 3.10+ and the newest possible (11.3.0) on 3.9. On 3.9 the
+  format allowlist is what keeps the vulnerable decoder unreachable. **Use Python
+  3.10+ if you can** — CI tests both paths.
+
 ## Deployment
 
 ### Frontend → Netlify
@@ -202,13 +257,25 @@ A `/api/transform` response can be fed straight back in — the UI does exactly 
 | Setting | Value |
 | --- | --- |
 | Root directory | `backend` |
-| Build command | `pip install -r requirements.txt` |
+| Build command | `pip install --require-hashes -r requirements.lock` (see note) |
 | Start command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
 | Health check path | `/api/health` |
+| Python version | **3.12** (or any ≥ 3.10, so the patched Pillow is used) |
 
-Set **`CORS_ORIGINS`** to your Netlify URL (comma separated, e.g.
-`https://my-app.netlify.app`); it defaults to `*`. Pillow needs no system packages,
-so the default Python image is enough.
+> `requirements.lock` is compiled for a single interpreter because it holds one
+> resolved hash set per Python version. Use it as-is on Python 3.9, or regenerate
+> it under your deploy interpreter:
+> `pip-compile --generate-hashes --output-file=requirements.lock requirements.txt`
+
+Environment variables to set:
+
+| Variable | Purpose |
+| --- | --- |
+| `CORS_ORIGINS` | Your Netlify URL, e.g. `https://my-app.netlify.app`. **Required** — without it the API only accepts localhost origins and logs a warning. |
+| `ENABLE_DOCS` | Set to `false` to remove `/docs`, `/redoc` and `/openapi.json`. |
+| `RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW` | Transform endpoint budget (default 20 requests / 60 s). |
+
+Pillow needs no system packages, so the default Python image is enough.
 
 ## How the conversion works
 
