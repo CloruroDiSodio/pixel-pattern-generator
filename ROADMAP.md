@@ -13,7 +13,7 @@ to respect.
 
 ---
 
-## 1. Baseline (as of v1.2.0)
+## 1. Baseline (as of v1.3.0)
 
 A **single-image, single-shot** converter:
 
@@ -26,10 +26,11 @@ Dropzone ──► POST /api/transform ──► PixelCanvas + editor ──► 
 | Area | State |
 | --- | --- |
 | Conversion | 3 resampling modes, 4 quantizers, Floyd–Steinberg + Bayer 4×4, grid width 4–200, 2–40 colours |
-| Palettes | NES, PICO‑8, Game Boy DMG, Sweetie 16, CGA, greyscale, or a custom hex list |
+| Palettes | NES, PICO‑8, Game Boy DMG, Sweetie 16, CGA, greyscale, **DMC**, or a custom hex list |
 | Preview | Canvas, zoom 1×–N with a **Fit** button, hover chip, click-to-copy |
 | **Editor** | **inspect · paint · eyedropper · fill · erase, 50-step undo/redo (`Cmd/Ctrl+Z`)** |
 | Craft | Symbol chart, numbered margins, legend with %, stitch counts, repeats 1–20 |
+| **Threads** | **DMC matching: brand, code, thread name and skeins per colour — in the legend and both exports** |
 | Exports | PNG 16/32/64/128×, CSV chart, Markdown, raw JSON |
 | I18n | English + Italian, typed catalogues, `localStorage` (`ppg.locale`) |
 | Persistence | Settings only (`ppg.settings`). **The image, the result and any edits are lost on reload.** |
@@ -42,9 +43,11 @@ Dropzone ──► POST /api/transform ──► PixelCanvas + editor ──► 
    re-post to `/api/pattern`, so the legend, counts, chart and every export follow
    automatically. What is *not* covered: keyboard painting, and persistence (a
    reload still throws edits away — see F7).
-2. **The craft promise is under-delivered.** The pitch is "printable
-   cross-stitch pattern", but the legend reads `Colour 1 · #1D2B53 · 12%`. A
-   stitcher needs *"DMC 797, buy 2 skeins"*.
+2. ~~**The craft promise is under-delivered.**~~ **Closed in v1.3.0** — see F2.
+   The legend can now name the thread (`DMC 797 · Royal Blue`) and say how many
+   skeins to buy, and the same columns are in the CSV and Markdown. What is
+   *not* covered: the DMC table is curated rather than complete, and the skein
+   estimate assumes a fabric count the UI cannot change yet.
 3. **Animated GIFs silently lose data.** See **F3a** — this is a **bug**, not a feature.
 4. **No comparison, no preprocessing, no continuity.** You cannot see the
    original next to the result, you cannot crop before converting, and a reload
@@ -151,40 +154,89 @@ non-leakage, 200×200 stack safety, history bound, symbol/palette alignment
 against a live `/api/pattern`), but that evidence is not committed and will not
 survive. `lib/pixelEdit.ts` is the first thing to cover when the runner lands.
 
-#### F2. Thread brand matching (DMC / Anchor) — `TODO` · **effort: M–L**
+#### F2. Thread brand matching (DMC) — `SHIPPED` (v1.3.0) · **effort: M**
 
 The biggest differentiator for the *craft* half of the app, which is currently
 pixel-art-first while the marketing promises a stitchable pattern.
 
-- [ ] Bundle a DMC (and optionally Anchor) colour table as ordinary entries in
-      `BUILT_IN_PALETTES` (`processor.py:343` — shape
-      `{name, description, colors: [{hex, label}]}`)
-- [ ] `threadBrand` setting → `TransformOptions` + `/api/options` + `TransformSettings`
-- [ ] Match with the existing `nearest_color_index` (redmean, `utils.py:112`) —
-      the hard part is already written and cached per unique colour
-- [ ] Legend gains brand code, thread name, and **skeins required**
-- [ ] Thread code and skein count must appear in the **CSV and Markdown** exports
-      too (`grid_to_csv` / `grid_to_markdown`, `utils.py:287` / `:333`), not just
-      in the UI
+- [x] **A `dmc` entry in `BUILT_IN_PALETTES`,** built from the thread table
+      rather than copied out of it, so the palette picker and the legend cannot
+      disagree about what `321 Red` looks like
+- [x] `threadBrand` on `/api/pattern` (+ `fabricCount`), brand summaries on
+      `/api/options`, brand type and picker on the frontend
+- [x] Matched with the existing `nearest_color_index` (redmean, `utils.py:112`) —
+      the hard part was already written and is cached per unique colour
+- [x] Legend gains brand code, thread name and **skeins required**
+- [x] Thread code and skein count appear in the **CSV and Markdown** exports too
+      (`grid_to_csv` / `grid_to_markdown`, `utils.py:287` / `:333`), plus a line
+      stating the fabric count the estimate assumes
 
-**Skein estimate — ASSUMPTION, validate before shipping.**
-A DMC skein is 8 m of 6-strand floss; cross stitch uses 2 strands, so one skein
-yields ~24 m of working thread. Per-stitch length is ~2 × the cell diagonal and
-depends on the fabric count:
+**Files:** new `app/threads.py`, `processor.py`, `utils.py`, `main.py`,
+`frontend/src/types/index.ts`, `lib/settings.ts`, `lib/api.ts`,
+`components/CraftPattern.tsx`, `app/page.tsx`, `en.ts` + `it.ts`
+**Tests:** `tests/test_threads.py` (table guards, matching determinism, skein
+boundaries), thread columns in `test_utils.py`, `test_processor.py` and
+`test_api.py`.
 
-```
-stitches_per_skein = usable_length_mm / (2 × diagonal_mm) / (1 + waste)
-where diagonal_mm ≈ (25.4 / count) × sqrt(2)
-```
+#### What shipped, and what it cost
 
-On 14-count that lands near **~4,700 stitches per skein**. Check this against a
-real bought pattern before it appears in the UI, and state the fabric count the
-estimate assumes.
+Shipped in **v1.3.0**. The bulk of the work was the colour table and the
+arithmetic around it; the plumbing turned out to be almost free.
 
-**Files:** new `backend/data/threads.py`, `processor.py`, `utils.py`, `main.py`,
-`frontend/src/types/index.ts`, `lib/settings.ts`, `components/CraftPattern.tsx`
-**Tests:** nearest-match determinism, skein rounding at the boundaries, CSV/MD
-round-trip of the new columns.
+- `app/threads.py` — the table, the match and the estimator, with **no
+  third-party imports** (same rule as `utils.py`), so it tests without Pillow.
+  A `ThreadBrand` carries its own skein geometry, so a second brand is a new
+  object rather than another `if brand ==` in the estimator.
+- Matching is the *existing* `nearest_color_index`, cached per unique colour.
+  One distance function for the whole app means the swatch that looks closest on
+  screen and the thread recommended agree — §2's argument again, applied to
+  colour instead of to the grid.
+- `build_pattern` gained `thread_brand` and a small `_thread_block` helper.
+  `utils.grid_to_csv` / `grid_to_markdown` take that block and append three
+  columns; without it the documents are byte-for-byte what they were.
+
+**Deviations from the plan above, and why:**
+
+- **`threadBrand` is a pattern option, not a conversion setting.** The plan put
+  it in `TransformSettings` (and therefore in `TransformOptions`). It has no
+  business being there: a conversion-settings change re-runs `/api/transform`
+  and rebuilds the grid from the source file, which **discards the editor's hand
+  edits** — F1's exact data-loss hazard, triggered by a control that changes no
+  pixel. It now lives in `PatternOptions` and re-posts `/api/pattern` only.
+  Consequence: it is not persisted in `ppg.settings`, exactly like the pattern
+  title and repeats next to it.
+- **`app/threads.py`, not `backend/data/threads.py`.** The plan's path implies a
+  data package that does not exist; keeping it inside `app` means it is
+  importable and covered by the same `--cov=app` gate as everything else.
+- **`ThreadError`, translated at the processor boundary.** `threads` must not
+  import `processor` (the dependency already points `processor → threads →
+  utils`), so it cannot raise `ProcessingError` itself. `build_pattern` catches
+  and re-raises, preserving the module's "every user error is a
+  `ProcessingError`" invariant that the API relies on for 400s.
+- **Anchor is not bundled.** The plan said "optionally Anchor". Its codes are a
+  different table from DMC's and I could not verify the hex values, and a
+  plausible-looking-but-wrong table sends somebody to buy the wrong thread —
+  worse than not offering the brand. DMC is offered; Anchor is a data problem,
+  not a code problem, and the registry is shaped so it is one entry away.
+
+**The table is curated, not complete.** 121 shades, not the full 450+. The full
+range is mostly duplicates of shades already in there, and each extra row is
+another hex that can be wrong. Matching needs the *space* filled, not every
+point in it — and the module docstring, the API description and the UI all say
+the shades are screen approximations to check against a physical card.
+
+**The skein estimate shipped with its assumption attached.** It computes
+~4,250 stitches per skein on 14 count (8 m × 6 strands ÷ 2 worked strands =
+24 m of working thread, 2 × cell diagonal per stitch, 10 % waste). The fabric
+count travels with the number: `/api/pattern` accepts `fabricCount`, the legend
+header states it, and both text exports print it. The one number still worth
+checking against a real bought pattern is the per-brand hex accuracy, not the
+arithmetic.
+
+**Known gap — no fabric-count control in the UI.** The API takes
+`fabricCount` (6–40) and the studio sends the default 14. Offering the common
+counts (11 / 14 / 16 / 18 / 22 / 28) is a small follow-up, deliberately left
+out rather than half-built here.
 
 #### F3. Animated GIF / sprite sheets — `TODO` · **effort: M**
 
@@ -330,8 +382,8 @@ contrast assertion per theme so the AA audit cannot silently regress.
 0. Frontend test runner (Vitest + Testing Library)   ← gate for everything below
 1. F3a  fix silent GIF truncation                     ← correctness bug, tiny
 2. F1   pixel editor + undo/redo                      ← SHIPPED v1.2.0
-3. F4   dither strength                               ← tiny, users will notice
-4. F2   thread brand matching                         ← the craft differentiator
+3. F2   thread brand matching                         ← SHIPPED v1.3.0
+4. F4   dither strength                               ← tiny, users will notice
 5. F7   project save / Import JSON                    ← stops losing work
 6. F5 / F6  crop + comparison slider
 7. F8 / F11  grid lock, light theme refactor
@@ -394,4 +446,9 @@ which is a real risk to the accessibility standard this project holds itself to.
 | 2026-10-04 | F1 shipped **ahead of** step 0 (no frontend test runner) | Deliberate, accepted risk: the feature was high-value and the grid maths is pure and isolated in `lib/pixelEdit.ts`. Recorded as the one part of the codebase without a regression net, and flagged again in §4 so it is not forgotten |
 | 2026-10-04 | An `inspect` tool was added to F1, beyond the four planned | Making paint the default would have silently removed click-to-copy for every existing user. Editing had to be purely additive |
 | 2026-10-04 | The palette is **not** compacted when a colour is painted away | Compacting renumbers the grid, and the undo stack holds grids in the original indexing — a correctness hazard for a cosmetic gain |
+| 2026-10-04 | F2 shipped **ahead of** step 0 as well | Same accepted risk as F1, same mitigation: the risky maths went into a pure module (`app/threads.py`) that needs no React and is now at 100 % pytest coverage. The UI layer is still the part without a net |
+| 2026-10-04 | `threadBrand` is a **pattern** option, not a conversion setting | Deviates from the F2 plan on purpose. It changes no pixels, and a `TransformSettings` change re-runs the transform and discards the editor's edits — F1's data-loss hazard, caused by a control that cannot affect the result |
+| 2026-10-04 | Only **DMC** bundled, no Anchor | Anchor's codes are a separate table and its hexes could not be verified. A wrong table sends somebody to buy the wrong thread; a missing brand costs nothing |
+| 2026-10-04 | The DMC table is **curated** (121 shades), not the full range | Nearest-colour matching needs the colour space filled, not every point in it. Every extra row is another hex that can be wrong, and the module docstring says exactly that |
+| 2026-10-04 | The skein estimate **ships with its assumption attached** | A skein count without the fabric count it was computed for is a number nobody can check. `fabricCount` and `stitchesPerSkein` travel with every response and with both exports |
 ---

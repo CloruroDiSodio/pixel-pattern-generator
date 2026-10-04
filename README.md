@@ -24,8 +24,9 @@ the interactive canvas preview and all the controls.
 | 🎨 **Pixelate** | Grid width 4–200 cells, aspect ratio preserved, three resampling modes. |
 | 🎯 **Quantize** | Median cut / max coverage / fast octree / libimagequant, 2–40 colours. |
 | ✨ **Dither** | Floyd–Steinberg error diffusion and Bayer ordered dithering — both implemented from scratch, because Pillow's `dither=` argument is silently ignored. |
-| 🎮 **Palettes** | NES, PICO-8, Game Boy DMG, Sweetie 16, CGA, greyscale — or your own hex list. |
+| 🎮 **Palettes** | NES, PICO-8, Game Boy DMG, Sweetie 16, CGA, greyscale, **DMC**, or your own hex list. |
 | 🧵 **Craft patterns** | Symbol chart with numbered margins, colour legend, stitch counts, repeats. |
+| 🧶 **Thread matching** | Match every colour onto a real DMC shade — code, thread name and **skeins to buy**, in the legend *and* the exports. |
 | ✏️ **Pixel editor** | Inspect, paint, eyedropper, bucket fill and erase straight on the canvas, with 50-step undo/redo. The legend, counts, chart and every export follow along. |
 | ⬇️ **Export** | PNG (16×–128×), CSV chart, Markdown, raw JSON. |
 | ⚡ **Live preview** | Canvas rendering, hover to inspect a cell, click to copy a hex value. |
@@ -40,6 +41,7 @@ pixel-pattern-generator/
 │   ├── app/
 │   │   ├── main.py              # HTTP layer (routes + Pydantic schemas)
 │   │   ├── processor.py         # image processing, quantization, matrices
+│   │   ├── threads.py           # DMC colour table + skein estimate (no deps)
 │   │   └── utils.py             # colour maths + pattern serialisation (no deps)
 │   ├── tests/                   # pytest suites (unit + API)
 │   ├── requirements.txt
@@ -143,6 +145,75 @@ says so in a toast rather than dropping the work silently.
 > Painting needs a pointer. The tools and the history buttons are fully keyboard
 > accessible, but there is no keyboard cursor on the canvas yet.
 
+## Thread matching (DMC)
+
+A chart that says `Colour 1 · #1D2B53 · 12%` is not something you can go and
+buy. Pick a **thread brand** in the craft tab and every legend entry gains the
+thread a stitcher would actually buy:
+
+```text
+A  Medium Red            #B71F33   DMC 304 · Red Medium · 1 skein
+B  Antique Blue          #384253   DMC 3750 · Antique Blue Very Dark · 2 skeins
+```
+
+Two ways to use it:
+
+- **Match after the fact** (`threadBrand`) — keep any palette and get the nearest
+  real thread for each colour.
+- **Snap to DMC first** — choose the **DMC threads** palette and the image is
+  quantized onto stitchable shades directly. Combined with matching, the legend
+  then names that exact shade rather than an approximation of it.
+
+The same three columns (**Thread**, **Thread name**, **Skeins**) are appended to
+the CSV and Markdown exports, and both documents also print the thread brand and
+the fabric count the estimate assumes. With no brand selected the exports are
+byte-for-byte what they were before this feature existed.
+
+### How the match works
+
+`backend/app/threads.py` holds the table and the arithmetic, and imports nothing
+outside the standard library (same rule as `utils.py`). Matching reuses the
+**same** `nearest_color_index` the quantiser uses — one redmean distance
+function for the whole app means the swatch that looks closest on screen and the
+thread recommended agree, and ties keep resolving to the same index. Results are
+cached per unique colour; a pattern has at most 40 of them.
+
+### How the skein estimate works — and what it assumes
+
+A DMC skein is 8 m of **six-strand** floss. Cross stitch works two strands at a
+time, so one skein is worth `8 m × 6 ÷ 2 = 24 m` of working thread — not the
+8 m printed on the wrapper. A full cross stitch travels the cell diagonal
+twice, and a cell of *count*-count fabric is `25.4 / count` mm on a side:
+
+```text
+diagonal  = (25.4 / count) × √2
+per stitch = 2 × diagonal              # out and back
+yield      = usable length / per stitch / (1 + 10% waste)
+```
+
+On 14-count that is **~4,700 stitches before waste, ~4,251 after** — the figure
+the API returns as `stitchesPerSkein`. Skeins are whole: 4,251 stitches is one
+skein, 4,252 is two.
+
+> **The assumption is not hidden.** It depends entirely on the fabric, so the
+> count travels with the number: `POST /api/pattern` accepts `fabricCount`
+> (6–40, default 14), the legend header states it, and both exports print it.
+> The studio always sends 14 for now — there is no fabric-count control in the UI.
+
+### Known caveats
+
+- **The table is curated, not complete.** 121 shades, not the full DMC range of
+  450+. Nearest-colour matching needs the colour *space* filled, not every point
+  in it, and each extra row is another hex that can be wrong.
+- **The hexes are screen approximations.** They are the commonly published RGB
+  values for each shade; dye lots, screen calibration and your eyes all differ.
+  Check a physical shade card before buying by the skein — the UI says so under
+  the legend too.
+- **Anchor is not bundled.** Its codes are a separate table from DMC's. Until
+  that table can be sourced and verified it is better to offer one brand
+  correctly than two approximately. The registry is shaped so adding it is one
+  object.
+
 ## Versioning and the changelog
 
 The app follows [Semantic Versioning](https://semver.org). Two files hold the
@@ -236,7 +307,7 @@ Check the pill in the header: it should read **“API online”**. It polls
 ### 3. Tests
 
 ```bash
-cd backend   && pytest                                      # 179 tests
+cd backend   && pytest                                      # 366 tests
 cd frontend  && npm run typecheck && npm run lint && npm run build
 ```
 
@@ -258,8 +329,8 @@ All payloads are **camelCase** on the wire. Interactive reference: `/docs`.
 | Method | Route | Description |
 | --- | --- | --- |
 | `GET` | `/api/health` | Liveness probe (the UI polls this every 30 s) |
-| `GET` | `/api/options` | Supported enum values + hard limits |
-| `GET` | `/api/palettes` | Bundled palettes and the chart symbol set |
+| `GET` | `/api/options` | Supported enum values, thread brands and hard limits |
+| `GET` | `/api/palettes` | Bundled palettes (including DMC) and the chart symbol set |
 | `POST` | `/api/transform` | `multipart/form-data` upload → pixel grid, palette, preview PNG |
 | `POST` | `/api/pattern` | Pixel grid → cross-stitch chart (CSV + Markdown) |
 
@@ -274,7 +345,7 @@ All payloads are **camelCase** on the wire. Interactive reference: `/docs`.
 | `resizeMode` | enum | `pixelate` | `pixelate` (box) · `sample` (nearest) · `smooth` (lanczos) |
 | `quantizeMethod` | enum | `mediancut` | `mediancut` · `maxcoverage` · `fastoctree` · `libimagequant` |
 | `dither` | enum | `none` | `none` · `floyd_steinberg` · `bayer` |
-| `palette` | enum | `auto` | `auto`, a preset id, or `custom` |
+| `palette` | enum | `auto` | `auto`, a preset id (`nes`, `pico8`, `gameboy`, `sweetie16`, `cga`, `grayscale`, `dmc`), or `custom` |
 | `customPalette` | string | – | Required when `palette=custom`, e.g. `#1D2B53,#7E2553` |
 | `background` | hex | – | Colour transparent pixels are flattened onto (default white) |
 | `paletteSort` | enum | `usage` | `usage` · `luminance` · `hex` |
@@ -314,7 +385,9 @@ All payloads are **camelCase** on the wire. Interactive reference: `/docs`.
   "grid": [[0, 1, 1], [0, 0, 1], [2, 2, 0]],
   "palette": [{ "hex": "#000000", "count": 4, "label": "Black" }],
   "symbols": ["A", "B", "C"],       // optional, auto-generated when omitted
-  "repeatX": 2, "repeatY": 1
+  "repeatX": 2, "repeatY": 1,
+  "threadBrand": "dmc",            // optional: match onto a real thread table
+  "fabricCount": 14                // optional: fabric count the skein estimate assumes
 }
 ```
 
@@ -322,14 +395,30 @@ Returns `totalStitches`, `rowLabels`, `columnLabels`, a symbol `grid`, a `legend
 per-colour counts and percentages, plus ready-to-save `csv` and `markdown` documents.
 A `/api/transform` response can be fed straight back in — the UI does exactly that.
 
+With `threadBrand` set, each legend entry also carries a `thread`:
+
+```jsonc
+"thread": {
+  "brand": "DMC", "code": "304", "name": "Red Medium",
+  "hex": "#B71F33",
+  "skeins": 1                      // whole skeins to buy; 0 if unused
+}
+```
+
+and the response repeats the assumptions — `threadBrand`, `fabricCount` and
+`stitchesPerSkein` (`null` when no brand is selected). The same data appears as
+**Thread / Thread name / Skeins** columns in both text exports. Unknown brands
+are a `400`; `fabricCount` outside 6–40 is a `422`. See
+[Thread matching](#thread-matching-dmc).
+
 </details>
 
 ### Errors
 
 | Status | When |
 | --- | --- |
-| `400` | Unsupported image, empty/oversized upload, unknown option value, grid referencing a missing palette index |
-| `422` | Missing file or a number outside its documented range (FastAPI validation) |
+| `400` | Unsupported image, empty/oversized upload, unknown option value, unknown thread brand, grid referencing a missing palette index |
+| `422` | Missing file, or a number outside its documented range (FastAPI validation) |
 
 ## Security
 

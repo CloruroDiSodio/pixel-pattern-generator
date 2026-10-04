@@ -12,20 +12,24 @@ backend/
 │   ├── __init__.py     # package metadata
 │   ├── main.py         # FastAPI app, routes, Pydantic schemas, CORS
 │   ├── processor.py    # Pillow pipeline + bundled palettes + pattern building
+│   ├── threads.py      # DMC colour table, nearest-thread match, skein estimate
 │   └── utils.py        # pure helpers: colour maths, CSV/Markdown serialisation
 ├── tests/
 │   ├── conftest.py         # deterministic sample-image fixtures
-│   ├── test_utils.py       # 36 tests — colour maths, parsing, serialisation
-│   ├── test_processor.py   # 79 tests — pipeline, dithering, palettes, patterns
-│   ├── test_api.py         # 56 tests — every route, status codes, CORS, hardening
-│   └── test_lockfile.py     #  8 tests — lock file stays deployable
+│   ├── test_utils.py       # 40 tests — colour maths, parsing, serialisation
+│   ├── test_processor.py   # 91 tests — pipeline, dithering, palettes, patterns
+│   ├── test_api.py         # 68 tests — every route, status codes, CORS, hardening
+│   ├── test_threads.py     # 159 tests — the DMC table, matching, skein maths
+│   └── test_lockfile.py    #   8 tests — lock file stays deployable
 ├── pytest.ini
 ├── requirements.txt     # runtime deps
 └── requirements-dev.txt # + pytest, pytest-cov, httpx
 ```
 
 `utils.py` deliberately imports neither Pillow nor FastAPI, so the colour maths and
-the pattern serialisation can be tested (and reused) in isolation.
+the pattern serialisation can be tested (and reused) in isolation. `threads.py`
+follows the same rule, and `utils` does **not** import it — the dependency points
+one way (`processor → threads → utils`) so both stay free of the web stack.
 
 ## Setup
 
@@ -63,12 +67,12 @@ Keep this running in its own terminal — the Next.js front-end (`../frontend`, 
 ## Test
 
 ```bash
-pytest                                   # 179 tests
+pytest                                   # 366 tests
 pytest --cov=app --cov-report=term-missing
 ```
 
-Current coverage: **97 %** (`app/main.py` 98 %, `app/processor.py` 97 %,
-`app/utils.py` 98 %).
+Current coverage: **98 %** (`app/main.py` 98 %, `app/processor.py` 97 %,
+`app/threads.py` 100 %, `app/utils.py` 98 %).
 
 ## Endpoints
 
@@ -76,10 +80,10 @@ Current coverage: **97 %** (`app/main.py` 98 %, `app/processor.py` 97 %,
 | --- | --- | --- |
 | `GET` | `/` | Service banner |
 | `GET` | `/api/health` | Liveness probe |
-| `GET` | `/api/options` | Enum values, limits and defaults |
-| `GET` | `/api/palettes` | Bundled palettes + chart symbols |
+| `GET` | `/api/options` | Enum values, thread brands, limits and defaults |
+| `GET` | `/api/palettes` | Bundled palettes (incl. DMC) + chart symbols |
 | `POST` | `/api/transform` | Image upload → grid, palette, preview PNG |
-| `POST` | `/api/pattern` | Grid → cross-stitch chart (CSV + Markdown) |
+| `POST` | `/api/pattern` | Grid → cross-stitch chart (CSV + Markdown), optional thread matching |
 
 Full interactive reference: <http://localhost:8000/docs>.
 
@@ -105,6 +109,14 @@ curl -X POST http://localhost:8000/api/pattern \
   -d '{"title":"Mushroom","grid":[[0,1],[1,0]],"palette":[{"hex":"#000000","label":"Black"}]}'
 ```
 
+Matching onto a real thread table is one extra field:
+
+```bash
+curl -X POST http://localhost:8000/api/pattern \
+  -H 'Content-Type: application/json' \
+  -d '{"title":"Mushroom","grid":[[0,1],[1,0]],"palette":[{"hex":"#000000","label":"Black"},{"hex":"#F0C820","label":"Gold"}],"threadBrand":"dmc","fabricCount":14}'
+```
+
 ## Limits
 
 | Limit | Value |
@@ -116,11 +128,15 @@ curl -X POST http://localhost:8000/api/pattern \
 | Palette size | 2–40 colours (40 chart symbols) |
 | Preview scale | 1–40 px per cell |
 | Pattern repeats | 1–20 per axis |
+| Thread brands | `none` (default), `dmc` |
+| Fabric count (`/api/pattern`) | 6–40 stitches per inch, default 14 |
 | Transform rate limit | 20 requests / 60 s per client |
 
 Every user-triggerable failure raises `ProcessingError`, which the HTTP layer turns
 into a `400` with a human-readable message; out-of-range numbers are rejected by
-Pydantic with a `422`.
+Pydantic with a `422`. `threads.py` raises its own `ThreadError` — it cannot import
+`ProcessingError` without creating an import cycle — and `build_pattern` translates
+it, so the HTTP layer still sees exactly one failure type.
 
 See the root [Security section](../README.md#security) for the OWASP Top 10
 breakdown, the image-format allowlist rationale and the known limitations.
