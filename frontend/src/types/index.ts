@@ -28,7 +28,7 @@ export interface TransformResult {
   originalHeight: number;
   palette: PaletteColor[];
   /** `grid[y][x]` is an index into `palette`. */
-  grid: number[][];
+  grid: Grid;
   /** Chart symbol per palette index. */
   symbols: string[];
   /**
@@ -105,6 +105,18 @@ export type QuantizeMethod = 'mediancut' | 'maxcoverage' | 'fastoctree' | 'libim
 export type DitherMode = 'none' | 'floyd_steinberg' | 'bayer';
 export type PaletteSort = 'usage' | 'luminance' | 'hex';
 export type PaletteId = 'auto' | 'custom' | (string & {});
+
+/** `grid[y][x]` is an index into the palette. */
+export type Grid = number[][];
+
+/**
+ * Tools available on the pixel canvas.
+ *
+ * `inspect` is the tool the canvas has always used - hover to read a cell, click
+ * to copy its hex value - kept as the default so editing is strictly additive and
+ * the existing click-to-copy behaviour is never taken away from the user.
+ */
+export type EditTool = 'inspect' | 'paint' | 'eyedropper' | 'fill' | 'eraser';
 
 export interface TransformSettings {
   grid_width: number;

@@ -62,13 +62,36 @@ export const it: Record<TranslationKey, string> = {
   'canvas.fitTitle': 'Riduci l’anteprima finché l’intera griglia non è visibile',
   'canvas.dimensions': '{width} × {height} celle',
   'canvas.hint': 'Passa il mouse su una cella per ispezionarla · clicca per copiare il colore',
+  'canvas.editingHint': 'Fai clic o trascina sul canvas per applicare lo strumento attivo',
   'canvas.alt': 'Anteprima pixel, {width} per {height} celle, {colours} colori',
+
+  /* --- pixel editor ------------------------------------------------------ */
+  'editor.tools': 'Strumenti di modifica',
+  'editor.inspect': 'Ispeziona',
+  'editor.paint': 'Pennello',
+  'editor.eyedropper': 'Seleziona colore',
+  'editor.fill': 'Riempimento',
+  'editor.eraser': 'Gomma',
+  'editor.dirty': 'Modificato',
+  'editor.undo': 'Annulla',
+  'editor.redo': 'Ripeti',
+  'editor.undoTitle': 'Annulla l’ultima modifica',
+  'editor.redoTitle': 'Ripeti l’ultima modifica annullata',
+  'editor.activeColour': 'Colore attivo:',
+  'editor.pickFromPalette': 'scegline uno dalla palette qui sotto',
+  'editor.shortcuts':
+    'Fai clic o trascina sul canvas. Tastiera: {undo} per annullare, {redo} per ripetere.',
+  'editor.discardConfirm':
+    'Rielaborare ricostruisce la griglia dall’immagine originale e scarta le tue modifiche. Continuare?',
+  'editor.editsDiscarded': 'Le modifiche manuali sono state scartate: l’immagine è stata rielaborata.',
 
   /* --- palette ---------------------------------------------------------- */
   'palette.title': 'Palette',
   'palette.colours': '{count} colori',
   'palette.cells': '{count} celle',
+  'palette.copy': 'Copia esadecimale',
   'palette.hint': 'Clicca un campione per copiarne il colore esadecimale.',
+  'palette.hintEdit': 'Clicca un campione per usarlo come colore di pittura attivo.',
   'palette.swatchTitle': '{label} — {hex} — {count} celle ({percent}%)',
 /* --- settings --------------------------------------------------------- */
   'settings.gridWidth': 'Larghezza griglia',
@@ -89,6 +112,7 @@ export const it: Record<TranslationKey, string> = {
   'settings.useWhite': 'Usa bianco',
   'settings.usingWhite': 'Bianco',
   'settings.gridLines': 'Linee della griglia',
+  'settings.disabledHint': 'Aggiungi un’immagine per attivare questi controlli.',
 
   /* --- settings options ------------------------------------------------- */
   'resize.pixelate': 'Pixelizza (blocchi medi)',

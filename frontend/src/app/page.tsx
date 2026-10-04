@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useI18n, useTranslate } from '@/components/I18nProvider';
 import CraftPattern from '@/components/CraftPattern';
@@ -9,13 +9,17 @@ import Dropzone from '@/components/Dropzone';
 import Header from '@/components/Header';
 import PaletteStrip from '@/components/PaletteStrip';
 import PixelCanvas from '@/components/PixelCanvas';
+import PixelEditor from '@/components/PixelEditor';
 import SettingsPanel from '@/components/SettingsPanel';
 import StatusBanner from '@/components/StatusBanner';
 import { useImageUpload } from '@/hooks/useImageUpload';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
+import { usePatternSync } from '@/hooks/usePatternSync';
+import type { GridOverride } from '@/hooks/usePatternSync';
+import { usePixelEdit } from '@/hooks/usePixelEdit';
 import { useTransformPipeline } from '@/hooks/useTransformPipeline';
-import type { TransformPipeline } from '@/hooks/useTransformPipeline';
 import { API_BASE_URL, fetchApiOptions, fetchHealth, fetchPalettes } from '@/lib/api';
+import { recountPalette } from '@/lib/pixelEdit';
 import { DEFAULT_SETTINGS, FALLBACK_LIMITS } from '@/lib/settings';
 import { MAX_ZOOM, MIN_ZOOM } from '@/lib/zoom';
 import { APP_VERSION } from '@/lib/version';
@@ -24,9 +28,20 @@ import type {
   PaletteColor,
   PalettesResponse,
   PatternOptions,
+  PatternResult,
+  TransformResult,
   TransformSettings,
   ViewMode,
 } from '@/types';
+
+/**
+ * Stable empty list used until `/api/options` answers.
+ *
+ * A module-level constant, not a literal: `usePixelEdit` builds its callbacks
+ * from this value, and a fresh `[]` on every render would give them a new
+ * identity each time and defeat the `memo` on `PixelCanvas`.
+ */
+const EMPTY_SYMBOL_POOL: string[] = [];
 
 export default function StudioPage() {
   const { image, error: uploadError, acceptFile, clear } = useImageUpload();
@@ -46,12 +61,58 @@ export default function StudioPage() {
   const [toast, setToast] = useState<string | null>(null);
   const { t } = useI18n();
 
-  const { transform, pattern, status, error, isRefreshing, reload } = useTransformPipeline(
-    image,
-    settings,
+  const {
+    transform,
+    status,
+    error: transformError,
+    isRefreshing,
+    reload,
+  } = useTransformPipeline(image, settings, backendOnline !== false);
+
+  const symbolPool = options?.symbols ?? EMPTY_SYMBOL_POOL;
+
+  const editor = usePixelEdit({
+    transform,
+    background: settings.background,
+    symbolPool,
+  });
+
+  /**
+   * The grid the editor wants `/api/pattern` to build from, or `null` while the
+   * canvas is pristine.  `useMemo` keeps the identity stable between edits so
+   * the pattern sync does not re-fire on every unrelated re-render.
+   */
+  const gridOverride = useMemo<GridOverride | null>(
+    () =>
+      transform && editor.grid
+        ? { grid: editor.grid, palette: editor.palette, symbols: editor.symbols }
+        : null,
+    [editor.grid, editor.palette, editor.symbols, transform],
+  );
+
+  const { pattern, error: patternError } = usePatternSync(
+    transform,
     patternOptions,
+    gridOverride,
     backendOnline !== false,
   );
+
+  /**
+   * What the UI actually renders and exports.
+   *
+   * Deliberately the *same object* as `transform` when nothing has been edited,
+   * so the untouched studio keeps the exact memo behaviour it had before the
+   * editor existed.  Once there are edits the grid is ours, and the palette
+   * counts are recomputed - the backend derived them before the user touched
+   * anything, so the percentages on the swatches would otherwise stop adding up.
+   */
+  const result = useMemo<TransformResult | null>(() => {
+    if (!transform) return null;
+    if (!editor.grid) return transform;
+    return { ...transform, grid: editor.grid, palette: recountPalette(editor.grid, editor.palette) };
+  }, [editor.grid, editor.palette, transform]);
+
+  const error = transformError ?? patternError;
 
   /* --- backend metadata (palettes, limits, health) ----------------------- */
 
@@ -115,11 +176,68 @@ export default function StudioPage() {
     [copyToClipboard],
   );
 
+  /** Copying a hex value from the palette strip's detail line. */
+  const copyPaletteColor = useCallback(
+    (color: PaletteColor) => void copyToClipboard(color.hex),
+    [copyToClipboard],
+  );
+
+  const { setActiveIndex } = editor;
+
+  /**
+   * Arming a swatch for painting.  `PaletteStrip` hands back the colour as well
+   * as its index, but the grid stores the index, so the adapter is not optional.
+   */
+  const selectPaletteColor = useCallback(
+    (_color: PaletteColor, index: number) => setActiveIndex(index),
+    [setActiveIndex],
+  );
+
   const reportFitZoom = useCallback((value: number) => {
     setFitZoomValue((previous) => (previous === value ? previous : value));
   }, []);
 
-  const totalCells = transform ? transform.width * transform.height : 0;
+  /*
+   * Re-processing the image (a settings change or "Re-run") rebuilds the grid
+   * from the source file, so manual edits cannot survive it.  Silently dropping
+   * somebody's work is exactly the kind of thing this project complains about
+   * elsewhere, so say so.
+   *
+   * The ref has to be written from an effect rather than read during render: on
+   * the render where the transform changes, `editor.isDirty` has *already*
+   * flipped back to false, so reading it there would always miss.
+   */
+  const wasDirty = useRef(false);
+  const lastTransform = useRef(transform);
+  useEffect(() => {
+    if (editor.isDirty) wasDirty.current = true;
+  }, [editor.isDirty]);
+  useEffect(() => {
+    if (lastTransform.current === transform) return;
+    lastTransform.current = transform;
+    if (!wasDirty.current) return;
+    wasDirty.current = false;
+    setToast(t('editor.editsDiscarded'));
+  }, [transform, t]);
+
+  /**
+   * "Re-run" is a destructive action once there are edits on the canvas, so it
+   * asks first.  `window.confirm` blocks, which is fine for a rare deliberate
+   * click and costs no dependency.
+   */
+  const rerun = useCallback(() => {
+    if (editor.isDirty && !window.confirm(t('editor.discardConfirm'))) return;
+    wasDirty.current = false;
+    editor.discard();
+    reload();
+  }, [editor, reload, t]);
+
+  const activeColor = useMemo(
+    () => (editor.activeIndex === null ? null : (editor.palette[editor.activeIndex] ?? null)),
+    [editor.activeIndex, editor.palette],
+  );
+
+  const totalCells = result ? result.width * result.height : 0;
   const busy = status === 'loading';
 
   return (
@@ -185,7 +303,7 @@ export default function StudioPage() {
                   {transform ? (
                     <span className="chip">{t('toolbar.serverMs', { ms: transform.processingMs })}</span>
                   ) : null}
-                  <button type="button" className="btn btn-ghost px-2 py-1" onClick={reload}>
+                  <button type="button" className="btn btn-ghost px-2 py-1" onClick={rerun}>
                     {t('toolbar.rerun')}
                   </button>
                 </div>
@@ -193,7 +311,7 @@ export default function StudioPage() {
 
               {view === 'pixels' ? (
                 <div className="space-y-5">
-                  {transform ? (
+                  {result ? (
                     <>
                       <div className="flex flex-wrap items-center gap-3">
                         <label className="flex items-center gap-2 text-xs text-slate-400">
@@ -220,24 +338,40 @@ export default function StudioPage() {
                         </button>
                       </div>
 
+                      <PixelEditor
+                        tool={editor.tool}
+                        onToolChange={editor.setTool}
+                        activeColor={activeColor}
+                        activeIndex={editor.activeIndex}
+                        canUndo={editor.canUndo}
+                        canRedo={editor.canRedo}
+                        isDirty={editor.isDirty}
+                        onUndo={editor.undo}
+                        onRedo={editor.redo}
+                      />
+
                       <PixelCanvas
-                        grid={transform.grid}
-                        palette={transform.palette}
+                        grid={result.grid}
+                        palette={result.palette}
                         zoom={zoom}
                         showGridLines={settings.grid_lines}
+                        tool={editor.tool}
                         onPick={pickColor}
+                        onEditCell={editor.apply}
                         onFitZoomChange={reportFitZoom}
                       />
 
                       <div className="panel space-y-4 p-5">
                         <PaletteStrip
-                          palette={transform.palette}
-                          symbols={transform.symbols}
+                          palette={result.palette}
+                          symbols={result.symbols}
                           totalCells={totalCells}
-                          onSelect={(color) => void copyToClipboard(color.hex)}
+                          activeIndex={editor.activeIndex}
+                          onSelect={selectPaletteColor}
+                          onCopy={copyPaletteColor}
                         />
                         <DownloadMenu
-                          transform={transform}
+                          transform={result}
                           pattern={pattern}
                           title={patternOptions.title}
                           disabled={busy}
@@ -251,7 +385,7 @@ export default function StudioPage() {
                   patternOptions={patternOptions}
                   setPatternOptions={setPatternOptions}
                   pattern={pattern}
-                  transform={transform}
+                  transform={result}
                   busy={busy}
                 />
               )}
@@ -283,8 +417,9 @@ export default function StudioPage() {
 interface PatternViewProps {
   patternOptions: PatternOptions;
   setPatternOptions: (options: PatternOptions) => void;
-  pattern: TransformPipeline['pattern'];
-  transform: TransformPipeline['transform'];
+  pattern: PatternResult | null;
+  /** The grid being charted - edited or not. */
+  transform: TransformResult | null;
   busy: boolean;
 }
 

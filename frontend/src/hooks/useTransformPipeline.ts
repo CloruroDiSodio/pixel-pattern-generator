@@ -1,10 +1,10 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-import { buildPattern, transformImage } from '@/lib/api';
+import { transformImage } from '@/lib/api';
 import { useI18n } from '@/components/I18nProvider';
-import type { PatternOptions, PatternResult, TransformResult, TransformSettings, UploadedImage } from '@/types';
+import type { TransformResult, TransformSettings, UploadedImage } from '@/types';
 
 import { useDebouncedValue } from './useDebouncedValue';
 
@@ -12,7 +12,6 @@ export type PipelineStatus = 'idle' | 'loading' | 'ready' | 'error';
 
 interface UseTransformPipeline {
   transform: TransformResult | null;
-  pattern: PatternResult | null;
   status: PipelineStatus;
   error: string | null;
   /** True while a request is in flight but a previous result is still shown. */
@@ -27,37 +26,35 @@ const isAbort = (error: unknown): boolean =>
   error instanceof DOMException && error.name === 'AbortError';
 
 /**
- * Drive the two backend calls that power the studio:
+ * Drive `POST /api/transform`: the expensive call that turns the uploaded file
+ * into a pixel grid.
  *
- * 1. `POST /api/transform` whenever the image or the pixel settings change.
- * 2. `POST /api/pattern` whenever the transform result or the pattern options
- *    change (title, repeats).
+ * The companion `/api/pattern` call lives in `usePatternSync`.  It used to live
+ * here too, but the editor needs the grid *before* the transform hook can be
+ * given anything - it is built from the very result that hook produces.  Splitting
+ * them removes that cycle; the two hooks are still wired together by the page.
  *
- * Both are debounced and abortable, so dragging a slider never queues up a
+ * The request is debounced and abortable, so dragging a slider never queues up a
  * backlog of requests and a slow response can never overwrite a newer one.
  */
 export function useTransformPipeline(
   image: UploadedImage | null,
   settings: TransformSettings,
-  patternOptions: PatternOptions,
   enabled = true,
 ): UseTransformPipeline {
   const [transform, setTransform] = useState<TransformResult | null>(null);
-  const [pattern, setPattern] = useState<PatternResult | null>(null);
   const [status, setStatus] = useState<PipelineStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
   const { t, localizeError } = useI18n();
 
   const debouncedSettings = useDebouncedValue(settings, 350);
-  const debouncedPatternOptions = useDebouncedValue(patternOptions, 300);
 
   const reload = useCallback(() => setNonce((value) => value + 1), []);
 
   // Reset everything when the source image changes.
   useEffect(() => {
     setTransform(null);
-    setPattern(null);
     setError(null);
     setStatus(image ? 'loading' : 'idle');
   }, [image]);
@@ -85,35 +82,8 @@ export function useTransformPipeline(
     return () => controller.abort();
   }, [image, debouncedSettings, enabled, nonce, localizeError, t]);
 
-  useEffect(() => {
-    if (!enabled || !transform) return undefined;
-
-    const controller = new AbortController();
-    buildPattern(
-      transform.grid,
-      transform.palette,
-      transform.symbols,
-      debouncedPatternOptions,
-      controller.signal,
-    )
-      .then((result) => {
-        if (controller.signal.aborted) return;
-        setPattern(result);
-      })
-      .catch((cause: unknown) => {
-        if (controller.signal.aborted || isAbort(cause)) return;
-        setPattern(null);
-        setError(
-          localizeError(cause) || t('status.patternFailedShort'),
-        );
-      });
-
-    return () => controller.abort();
-  }, [transform, debouncedPatternOptions, enabled, localizeError, t]);
-
   return {
     transform,
-    pattern,
     status,
     error,
     isRefreshing: status === 'loading' && transform !== null,

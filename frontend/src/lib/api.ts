@@ -5,6 +5,7 @@ import type {
 import type {
   ApiErrorPayload,
   ApiOptions,
+  Grid,
   PalettesResponse,
   PatternOptions,
   PatternResult,
@@ -152,7 +153,7 @@ export function transformImage(
 
 /** `POST /api/pattern` - turn a pixel grid into a cross stitch chart. */
 export function buildPattern(
-  grid: number[][],
+  grid: Grid,
   palette: PaletteColor[],
   symbols: string[],
   options: PatternOptions,

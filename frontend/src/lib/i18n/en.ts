@@ -65,13 +65,35 @@ export const en = {
   'canvas.fitTitle': 'Shrink the canvas until the whole grid is visible',
   'canvas.dimensions': '{width} × {height} cells',
   'canvas.hint': 'Hover to inspect a cell · click to copy its hex value',
+  'canvas.editingHint': 'Click or drag on the canvas to apply the armed tool',
   'canvas.alt': 'Pixel preview, {width} by {height} cells, {colours} colours',
+
+  /* --- pixel editor ------------------------------------------------------ */
+  'editor.tools': 'Editing tools',
+  'editor.inspect': 'Inspect',
+  'editor.paint': 'Paint',
+  'editor.eyedropper': 'Pick colour',
+  'editor.fill': 'Fill',
+  'editor.eraser': 'Erase',
+  'editor.dirty': 'Edited',
+  'editor.undo': 'Undo',
+  'editor.redo': 'Redo',
+  'editor.undoTitle': 'Undo the last edit',
+  'editor.redoTitle': 'Redo the last undone edit',
+  'editor.activeColour': 'Active colour:',
+  'editor.pickFromPalette': 'pick one from the palette below',
+  'editor.shortcuts': 'Click or drag on the canvas. Keyboard: {undo} to undo, {redo} to redo.',
+  'editor.discardConfirm':
+    'Re-running rebuilds the pixel grid from the source image and discards your manual edits. Continue?',
+  'editor.editsDiscarded': 'Manual edits were discarded — the image was re-processed.',
 
   /* --- palette ---------------------------------------------------------- */
   'palette.title': 'Palette',
   'palette.colours': '{count} colours',
   'palette.cells': '{count} cells',
+  'palette.copy': 'Copy hex',
   'palette.hint': 'Click a swatch to copy its hex value.',
+  'palette.hintEdit': 'Click a swatch to make it the active painting colour.',
   'palette.swatchTitle': '{label} — {hex} — {count} cells ({percent}%)',
 /* --- settings --------------------------------------------------------- */
   'settings.gridWidth': 'Grid width',
@@ -92,6 +114,7 @@ export const en = {
   'settings.useWhite': 'Use white',
   'settings.usingWhite': 'Using white',
   'settings.gridLines': 'Grid lines',
+  'settings.disabledHint': 'Add an image to turn these controls on.',
 
   /* --- settings options ------------------------------------------------- */
   'resize.pixelate': 'Pixelate (average blocks)',

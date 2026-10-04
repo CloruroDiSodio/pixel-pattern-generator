@@ -4,7 +4,7 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
 import { useTranslate } from '@/components/I18nProvider';
 import { fitZoom } from '@/lib/zoom';
-import type { PaletteColor } from '@/types';
+import type { EditTool, PaletteColor } from '@/types';
 
 interface PixelCanvasProps {
   grid: number[][];
@@ -12,7 +12,10 @@ interface PixelCanvasProps {
   /** Zoom level of the on-screen canvas (independent of the export scale). */
   zoom: number;
   showGridLines: boolean;
+  tool?: EditTool;
   onPick?: (color: PaletteColor, cell: { x: number; y: number }) => void;
+  /** Applies the armed tool to one cell - paint, erase, fill or eyedrop. */
+  onEditCell?: (cell: { x: number; y: number }) => void;
   /**
    * Reports the largest zoom at which the whole grid fits the visible area, so
    * the page can offer a "fit" button beside the zoom slider.
@@ -25,6 +28,9 @@ interface Hover {
   y: number;
 }
 
+/** Tools where a press-and-drag keeps applying to every cell crossed. */
+const DRAG_TOOLS: EditTool[] = ['paint', 'eraser'];
+
 /**
  * Draws the pixel grid onto a `<canvas>`.
  *
@@ -36,11 +42,14 @@ function PixelCanvas({
   palette,
   zoom,
   showGridLines,
+  tool = 'inspect',
   onPick,
+  onEditCell,
   onFitZoomChange,
 }: PixelCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const dragging = useRef(false);
   const t = useTranslate();
   const [hover, setHover] = useState<Hover | null>(null);
 
@@ -130,6 +139,45 @@ function PixelCanvas({
     return { x, y };
   };
 
+  /*
+   * Pointer events rather than mouse events so a stylus and a finger behave the
+   * same.  For the drag tools the canvas captures the pointer on press, which is
+   * what keeps a stroke going when the cursor strays outside the element (and
+   * stops the browser from starting a scroll mid-stroke).
+   */
+  const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const cell = cellFromEvent(event);
+    if (!cell) return;
+
+    if (tool === 'inspect') {
+      const color = palette[grid[cell.y]?.[cell.x] ?? 0];
+      if (color) onPick?.(color, cell);
+      return;
+    }
+
+    onEditCell?.(cell);
+    if (DRAG_TOOLS.includes(tool)) {
+      dragging.current = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+  };
+
+  const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const cell = cellFromEvent(event);
+    setHover(cell);
+    // Only continue a stroke over the canvas itself - without this the pointer
+    // events that keep arriving after `onPointerLeave` would paint outside it.
+    if (!dragging.current || !cell) return;
+    onEditCell?.(cell);
+  };
+
+  const endStroke = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    dragging.current = false;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  };
+
   const hoveredColor = hover ? palette[grid[hover.y]?.[hover.x] ?? 0] : undefined;
 
   return (
@@ -150,9 +198,9 @@ function PixelCanvas({
         ) : (
           <span
             className="min-w-0 truncate"
-            title={t('canvas.hint')}
+            title={t(tool === 'inspect' ? 'canvas.hint' : 'canvas.editingHint')}
           >
-            {t('canvas.hint')}
+            {t(tool === 'inspect' ? 'canvas.hint' : 'canvas.editingHint')}
           </span>
         )}
       </div>
@@ -160,14 +208,16 @@ function PixelCanvas({
       <div ref={scrollRef} className="panel overflow-auto p-3">
         <canvas
           ref={canvasRef}
-          className="pixelated cursor-crosshair rounded-sm shadow-lg"
-          onMouseMove={(event) => setHover(cellFromEvent(event))}
-          onMouseLeave={() => setHover(null)}
-          onClick={(event) => {
-            const cell = cellFromEvent(event);
-            if (!cell) return;
-            const color = palette[grid[cell.y]?.[cell.x] ?? 0];
-            if (color) onPick?.(color, cell);
+          className={`pixelated rounded-sm shadow-lg select-none ${
+            DRAG_TOOLS.includes(tool) ? 'cursor-crosshair touch-none' : 'cursor-crosshair'
+          }`}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={endStroke}
+          onPointerCancel={endStroke}
+          onPointerLeave={() => {
+            dragging.current = false;
+            setHover(null);
           }}
           role="img"
           aria-label={t('canvas.alt', { width, height, colours: palette.length })}
