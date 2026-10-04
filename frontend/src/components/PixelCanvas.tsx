@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
+import { fitZoom } from '@/lib/zoom';
 import type { PaletteColor } from '@/types';
 
 interface PixelCanvasProps {
@@ -11,6 +12,11 @@ interface PixelCanvasProps {
   zoom: number;
   showGridLines: boolean;
   onPick?: (color: PaletteColor, cell: { x: number; y: number }) => void;
+  /**
+   * Reports the largest zoom at which the whole grid fits the visible area, so
+   * the page can offer a "fit" button beside the zoom slider.
+   */
+  onFitZoomChange?: (zoom: number) => void;
 }
 
 interface Hover {
@@ -30,8 +36,10 @@ function PixelCanvas({
   zoom,
   showGridLines,
   onPick,
+  onFitZoomChange,
 }: PixelCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<Hover | null>(null);
 
   const height = grid.length;
@@ -95,6 +103,21 @@ function PixelCanvas({
     return () => window.removeEventListener('resize', paint);
   }, [paint]);
 
+  // Track how far the grid can shrink before it stops fitting. Only the scroll
+  // panel is observed; the page bails out of re-rendering unless the reported
+  // value actually changed.
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node || !onFitZoomChange) return undefined;
+
+    const report = () => onFitZoomChange(fitZoom(node.clientWidth, width));
+    report();
+
+    const observer = new ResizeObserver(report);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [width, onFitZoomChange]);
+
   const cellFromEvent = (event: React.MouseEvent<HTMLCanvasElement>): Hover | null => {
     const canvas = canvasRef.current;
     if (!canvas || width === 0) return null;
@@ -134,7 +157,7 @@ function PixelCanvas({
         )}
       </div>
 
-      <div className="panel overflow-auto p-3">
+      <div ref={scrollRef} className="panel overflow-auto p-3">
         <canvas
           ref={canvasRef}
           className="pixelated cursor-crosshair rounded-sm shadow-lg"

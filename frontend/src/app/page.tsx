@@ -16,7 +16,15 @@ import { useTransformPipeline } from '@/hooks/useTransformPipeline';
 import type { TransformPipeline } from '@/hooks/useTransformPipeline';
 import { API_BASE_URL, fetchApiOptions, fetchHealth, fetchPalettes } from '@/lib/api';
 import { DEFAULT_SETTINGS, FALLBACK_LIMITS } from '@/lib/settings';
-import type { ApiOptions, PalettesResponse, PatternOptions, TransformSettings, ViewMode } from '@/types';
+import { MAX_ZOOM, MIN_ZOOM } from '@/lib/zoom';
+import type {
+  ApiOptions,
+  PaletteColor,
+  PalettesResponse,
+  PatternOptions,
+  TransformSettings,
+  ViewMode,
+} from '@/types';
 
 export default function StudioPage() {
   const { image, error: uploadError, acceptFile, clear } = useImageUpload();
@@ -28,6 +36,8 @@ export default function StudioPage() {
   });
   const [view, setView] = useState<ViewMode>('pixels');
   const [zoom, setZoom] = useState(12);
+  /** Largest zoom at which the grid still fits; reported by `PixelCanvas`. */
+  const [fitZoomValue, setFitZoomValue] = useState(MIN_ZOOM);
   const [backendOnline, setBackendOnline] = useState<boolean | null>(null);
   const [palettes, setPalettes] = useState<PalettesResponse['palettes']>([]);
   const [options, setOptions] = useState<ApiOptions | null>(null);
@@ -94,6 +104,16 @@ export default function StudioPage() {
     } catch {
       setToast('Clipboard is not available in this browser.');
     }
+  }, []);
+
+  /* Stable callbacks: an inline arrow here would defeat PixelCanvas's memo. */
+  const pickColor = useCallback(
+    (color: PaletteColor) => void copyToClipboard(color.hex),
+    [copyToClipboard],
+  );
+
+  const reportFitZoom = useCallback((value: number) => {
+    setFitZoomValue((previous) => (previous === value ? previous : value));
   }, []);
 
   const totalCells = transform ? transform.width * transform.height : 0;
@@ -175,8 +195,8 @@ export default function StudioPage() {
                           Zoom
                           <input
                             type="range"
-                            min={4}
-                            max={40}
+                            min={MIN_ZOOM}
+                            max={MAX_ZOOM}
                             value={zoom}
                             onChange={(event) => setZoom(Number(event.target.value))}
                             className="w-32"
@@ -184,6 +204,15 @@ export default function StudioPage() {
                           />
                           <span className="font-mono text-slate-300">{zoom}×</span>
                         </label>
+                        <button
+                          type="button"
+                          className="btn btn-ghost px-2 py-1"
+                          onClick={() => setZoom(fitZoomValue)}
+                          disabled={zoom <= fitZoomValue}
+                          title="Shrink the canvas until the whole grid is visible"
+                        >
+                          ⤢ Fit
+                        </button>
                       </div>
 
                       <PixelCanvas
@@ -191,7 +220,8 @@ export default function StudioPage() {
                         palette={transform.palette}
                         zoom={zoom}
                         showGridLines={settings.grid_lines}
-                        onPick={(color) => void copyToClipboard(color.hex)}
+                        onPick={pickColor}
+                        onFitZoomChange={reportFitZoom}
                       />
 
                       <div className="panel space-y-4 p-5">
