@@ -6,4 +6,4 @@
  * the changelog. Kept in step with `backend/app/__init__.py:__version__`, which
  * the API reports from `/` and `/api/health`.
  */
-export const APP_VERSION = '1.2.0';
+export const APP_VERSION = '1.3.0';

@@ -14,6 +14,80 @@ The version lives in two places and must be bumped together:
 
 Nothing yet.
 
+## [1.3.0] - 2026-10-04
+
+### Added
+
+- **Thread brand matching.** The legend can now name the thread a stitcher
+  would actually buy — **brand, code, name and how many skeins** — instead of
+  stopping at `Colour 1 · #1D2B53 · 12%`.
+  - Pick **DMC** in the craft tab and every legend entry gains
+    `DMC 304 · Red Medium · 1 skein`. Off by default, so nothing changes until
+    you ask for it.
+  - **DMC is also a palette preset.** Choose it in the conversion settings and
+    the image is quantized onto stitchable shades directly; combined with
+    matching, the legend names that exact shade rather than an approximation.
+  - **The exports carry it too.** The CSV and Markdown documents gain **Thread**,
+    **Thread name** and **Skeins** columns plus a line naming the brand and the
+    fabric count the estimate assumes. With no brand selected both documents are
+    byte-for-byte what they were before.
+  - Matching reuses the *same* redmean `nearest_color_index` the quantiser uses,
+    so the swatch that looks closest on screen and the thread recommended agree,
+    and ties resolve to the same index as everywhere else. Results are cached
+    per unique colour.
+- **A skein estimate, with its assumption attached.** One DMC skein is 8 m of
+  six-strand floss; cross stitch works two strands, so it is worth 24 m of
+  working thread, and a stitch travels the cell diagonal twice. On 14-count that
+  is ~4,700 stitches before a 10% waste allowance, **4,251 after** — the figure
+  the API returns as `stitchesPerSkein`. Because it depends entirely on the
+  fabric, the count travels with the number: `POST /api/pattern` takes
+  `fabricCount` (6–40), the legend header states the assumption, and both
+  exports print it.
+- **Notes on what this is not.** The DMC table is **curated, not complete** —
+  121 shades rather than the full 450+ — because nearest-colour matching needs
+  the colour space filled, not every point in it. The hexes are the commonly
+  published screen approximations; check a physical shade card before buying by
+  the skein. **Anchor is not bundled**: its codes are a separate table and a
+  plausible-but-wrong one would send somebody to buy the wrong thread.
+
+### Changed
+
+- `POST /api/pattern` accepts `threadBrand` (default `none`) and `fabricCount`
+  (default `14`), and answers with `threadBrand` / `fabricCount` /
+  `stitchesPerSkein` plus a `thread` object on every legend entry. An unknown
+  brand is a `400`; a fabric count outside 6–40 is a `422`.
+- `GET /api/options` publishes `threadBrands` so the UI builds its picker without
+  a second request. The tables themselves stay out of it.
+- Every legend entry now carries `thread`, which is **`null`** when no brand was
+  requested. Explicitly null rather than absent, so the UI can tell "no brand
+  matched" from "matched, and you need no skein".
+- `backend/app/threads.py` is a new module holding the table, the match and the
+  estimator. It imports nothing outside the standard library, the same rule
+  `utils.py` follows, and the dependency points one way (`processor → threads →
+  utils`) so `utils` stays free of it.
+- A **new thread option means a new user error**, so the backend now has a second
+  failure type internally: `threads.ThreadError`, translated into
+  `ProcessingError` at the `build_pattern` boundary. The API still sees exactly
+  one failure type and still answers `400`.
+
+### Notes
+
+- **The brand picker lives in the craft tab, not in the conversion settings**, and
+  this deviates from the roadmap plan on purpose. A conversion-settings change
+  re-runs `/api/transform`, which rebuilds the grid from the source image and
+  throws the editor's hand edits away. A control that cannot change a single
+  pixel must not be able to discard a stroke. It travels with the pattern
+  options instead, so changing it re-posts `/api/pattern` and nothing else — and,
+  like the pattern title and repeats next to it, it is not persisted in
+  `ppg.settings`.
+- **A colour painted over completely needs no skein.** It still appears in the
+  legend with `0` stitches (the editor deliberately does not compact the
+  palette), and it reports `0` skeins rather than asking somebody to buy a skein
+  for nothing.
+- **Thread matching adds no backend load.** It runs on the existing, unthrottled,
+  debounced `/api/pattern` call and costs at most 40 cached nearest-colour
+  lookups per pattern — the rate limit on `/api/transform` is untouched.
+
 ## [1.2.0] - 2026-10-04
 
 ### Added
@@ -152,7 +226,8 @@ Initial release.
 - Accessibility, SEO and performance work: WCAG AA contrast, keyboard-navigable
   controls, structured data, robots and sitemap, and memoised hot components.
 
-[Unreleased]: https://github.com/CloruroDiSodio/pixel-pattern-generator/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/CloruroDiSodio/pixel-pattern-generator/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/CloruroDiSodio/pixel-pattern-generator/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/CloruroDiSodio/pixel-pattern-generator/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/CloruroDiSodio/pixel-pattern-generator/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/CloruroDiSodio/pixel-pattern-generator/releases/tag/v1.0.0
