@@ -13,14 +13,14 @@ to respect.
 
 ---
 
-## 1. Baseline (as of v1.1.0)
+## 1. Baseline (as of v1.2.0)
 
 A **single-image, single-shot** converter:
 
 ```
-Dropzone ──► POST /api/transform ──► read-only PixelCanvas ──► POST /api/pattern ──► chart ──► exports
-             (resize → quantize     (hover to inspect,          (legend, stitch
-              → dither → remap)      click to copy hex)          counts, CSV, MD)
+Dropzone ──► POST /api/transform ──► PixelCanvas + editor ──► POST /api/pattern ──► chart ──► exports
+             (resize → quantize     (inspect · paint · fill,   (legend, stitch
+              → dither → remap)      undo/redo, click-to-copy)   counts, CSV, MD)
 ```
 
 | Area | State |
@@ -28,17 +28,20 @@ Dropzone ──► POST /api/transform ──► read-only PixelCanvas ──►
 | Conversion | 3 resampling modes, 4 quantizers, Floyd–Steinberg + Bayer 4×4, grid width 4–200, 2–40 colours |
 | Palettes | NES, PICO‑8, Game Boy DMG, Sweetie 16, CGA, greyscale, or a custom hex list |
 | Preview | Canvas, zoom 1×–N with a **Fit** button, hover chip, click-to-copy |
+| **Editor** | **inspect · paint · eyedropper · fill · erase, 50-step undo/redo (`Cmd/Ctrl+Z`)** |
 | Craft | Symbol chart, numbered margins, legend with %, stitch counts, repeats 1–20 |
 | Exports | PNG 16/32/64/128×, CSV chart, Markdown, raw JSON |
 | I18n | English + Italian, typed catalogues, `localStorage` (`ppg.locale`) |
-| Persistence | Settings only (`ppg.settings`). **The image and its result are lost on reload.** |
+| Persistence | Settings only (`ppg.settings`). **The image, the result and any edits are lost on reload.** |
 | Backend tests | Full pytest suite, coverage-gated, matrix py3.9 + py3.12 |
 | Frontend tests | **None** — `package.json` has only `dev/build/start/lint/typecheck` |
 
 ### 1.1 Gaps identified
 
-1. **The result is read-only.** `PixelCanvas` can only *inspect* a cell. After
-   spending time tuning settings there is no way to fix an individual pixel.
+1. ~~**The result is read-only.**~~ **Closed in v1.2.0** — see F1. Pixel edits
+   re-post to `/api/pattern`, so the legend, counts, chart and every export follow
+   automatically. What is *not* covered: keyboard painting, and persistence (a
+   reload still throws edits away — see F7).
 2. **The craft promise is under-delivered.** The pitch is "printable
    cross-stitch pattern", but the legend reads `Colour 1 · #1D2B53 · 12%`. A
    stitcher needs *"DMC 797, buy 2 skeins"*.
@@ -71,19 +74,19 @@ Effort is a rough S/M/L for a contributor already familiar with the repo.
 
 ### Tier 1 — high value per unit of effort
 
-#### F1. Pixel editor with undo/redo — `TODO` · **effort: M** · ⭐ recommended first
+#### F1. Pixel editor with undo/redo — `SHIPPED` (v1.2.0) · **effort: M** · ⭐ recommended first
 
 The single feature that turns a *converter* into a *studio*.
 
-- [ ] **Tool palette** in the pixels tab: paint · eyedropper · bucket fill · eraser
-- [ ] Paint from `PaletteStrip` (it already has a per-swatch `onSelect`,
+- [x] **Tool palette** in the pixels tab: paint · eyedropper · bucket fill · eraser
+- [x] Paint from `PaletteStrip` (it already has a per-swatch `onSelect`,
       `PaletteStrip.tsx:49`)
-- [ ] Erase → background colour (`settings.background`, defaults white)
-- [ ] **Undo / redo** history stack, `Cmd+Z` / `Cmd+Shift+Z`, bounded (e.g. 50 steps)
-- [ ] Edited grid lives in local state; re-POST to `/api/pattern` (debounced) so
+- [x] Erase → background colour (`settings.background`, defaults white)
+- [x] **Undo / redo** history stack, `Cmd+Z` / `Cmd+Shift+Z`, bounded (e.g. 50 steps)
+- [x] Edited grid lives in local state; re-POST to `/api/pattern` (debounced) so
       the legend, counts, chart and exports all follow
-- [ ] "Dirty" indicator, plus a confirm step before **Re-run** discards manual edits
-- [ ] A11y: every tool is a real `<button>` with `aria-pressed`, shortcuts
+- [x] "Dirty" indicator, plus a confirm step before **Re-run** discards manual edits
+- [x] A11y: every tool is a real `<button>` with `aria-pressed`, shortcuts
       documented in the UI, canvas keeps its `role="img"` + `aria-label`
 
 **Files:** `components/PixelCanvas.tsx`, `components/PaletteStrip.tsx`,
@@ -91,6 +94,62 @@ The single feature that turns a *converter* into a *studio*.
 **Backend:** none required (§2)
 **Tests:** bucket fill on a non-square grid, undo depth bound, eraser on
 background, pattern re-syncs after an edit.
+
+#### What shipped, and what it cost
+
+Shipped in **v1.2.0**. The interesting part is how little it needed.
+
+- `lib/pixelEdit.ts` — the grid maths as **pure functions** (`paintCell`,
+  `floodFill`, `recountPalette`, `withColor`). No React, no I/O, no dependencies.
+  This is the unit the "tests" line above wanted, and the piece that needs the
+  runner most.
+- `hooks/usePixelEdit.ts` — state, history and shortcuts.
+- `hooks/usePatternSync.ts` — **split out of `useTransformPipeline`**. The editor
+  is built *from* the transform, so the transform hook could not also be given the
+  editor's output; that cycle is why the pattern call needed its own hook.
+- `components/PixelEditor.tsx` — the toolbar.
+
+**Deviations from the plan above, and why:**
+
+- **An extra `inspect` tool.** The plan listed four; the canvas already had
+  hover-to-inspect and click-to-copy, and making paint the default would have
+  silently removed click-to-copy for everyone. `inspect` is now the default and
+  behaves exactly as before, so the editor is purely additive.
+- **Copying a hex moved.** A swatch cannot both "arm for painting" and "copy"
+  without nesting a button inside a button — the same mistake `Dropzone` already
+  had to be fixed for. Copy is now a button in the strip's detail line.
+- **`Cmd/Ctrl+Y` also bound for redo.** Not in the plan; it is what Windows users
+  try, and it costs one line.
+- **`window.confirm` for the Re-run guard**, not a modal. Deliberate: §5's
+  dependency discipline says a platform primitive beats a package.
+
+**Two things the plan did not anticipate:**
+
+1. **The eraser can *append* to the palette.** `settings.background` is not
+   guaranteed to be one of the quantiser's colours, and a grid stores palette
+   *indexes*. The background is therefore added on first use — **and a chart
+   symbol is appended with it**, because `build_pattern` indexes `symbols[index]`
+   directly and would raise `IndexError` otherwise. The override handed to
+   `/api/pattern` carries grid + palette + symbols as one unit, never the grid
+   alone.
+2. **Any conversion-settings change also discards edits**, because it re-runs
+   `/api/transform` and rebuilds the grid from the source file. The plan only
+   guarded Re-run. A toast now covers this path — silent data loss is precisely
+   what F3a is filed against.
+
+**Accepted trade-off:** a colour painted over completely stays in the legend at
+`0` stitches. Compacting the palette would renumber the grid, and the undo stack
+holds grids in the original indexing, so pruning would be a real correctness
+hazard for a cosmetic gain.
+
+**Not done — keyboard painting.** Tools and history are keyboard-reachable, but
+painting needs a pointer; the canvas keeps its `role="img"` description.
+
+**Tests were NOT written — §4 step 0 is still outstanding and is now overdue.**
+The pure functions above were verified by hand (non-square flood fill, diagonal
+non-leakage, 200×200 stack safety, history bound, symbol/palette alignment
+against a live `/api/pattern`), but that evidence is not committed and will not
+survive. `lib/pixelEdit.ts` is the first thing to cover when the runner lands.
 
 #### F2. Thread brand matching (DMC / Anchor) — `TODO` · **effort: M–L**
 
@@ -270,7 +329,7 @@ contrast assertion per theme so the AA audit cannot silently regress.
 ```text
 0. Frontend test runner (Vitest + Testing Library)   ← gate for everything below
 1. F3a  fix silent GIF truncation                     ← correctness bug, tiny
-2. F1   pixel editor + undo/redo                      ← best value/effort
+2. F1   pixel editor + undo/redo                      ← SHIPPED v1.2.0
 3. F4   dither strength                               ← tiny, users will notice
 4. F2   thread brand matching                         ← the craft differentiator
 5. F7   project save / Import JSON                    ← stops losing work
@@ -282,6 +341,11 @@ contrast assertion per theme so the AA audit cannot silently regress.
 **Step 0 is not optional.** The backend has coverage-gated pytest; the frontend
 has nothing. F1's paint maths and history stack are exactly the kind of logic
 that regresses silently.
+
+> **F1 was shipped ahead of step 0** (v1.2.0) and is therefore the one part of
+> the codebase with no committed regression net. `lib/pixelEdit.ts` is pure and
+> dependency-free — it is the cheapest thing in the repo to cover, and it should
+> be the first target when the runner lands.
 
 **F11 is deliberately last among the "nice to have" items** even though a theme
 switch is often requested early. It touches 65 hardcoded colour utilities across
@@ -327,4 +391,7 @@ which is a real risk to the accessibility standard this project holds itself to.
 | 2026-10-04 | F1 (editor) recommended as the first feature | Best value/effort; needs **no backend work** thanks to `/api/pattern` accepting a raw grid (§2) |
 | 2026-10-04 | Frontend test runner is a prerequisite, not a follow-up | F1 introduces non-trivial client logic with zero existing coverage |
 | 2026-10-04 | GIF truncation treated as a bug (F3a), not a feature | Silent data loss is worse than an honest rejection |
+| 2026-10-04 | F1 shipped **ahead of** step 0 (no frontend test runner) | Deliberate, accepted risk: the feature was high-value and the grid maths is pure and isolated in `lib/pixelEdit.ts`. Recorded as the one part of the codebase without a regression net, and flagged again in §4 so it is not forgotten |
+| 2026-10-04 | An `inspect` tool was added to F1, beyond the four planned | Making paint the default would have silently removed click-to-copy for every existing user. Editing had to be purely additive |
+| 2026-10-04 | The palette is **not** compacted when a colour is painted away | Compacting renumbers the grid, and the undo stack holds grids in the original indexing — a correctness hazard for a cosmetic gain |
 ---

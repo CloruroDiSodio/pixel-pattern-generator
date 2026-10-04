@@ -26,6 +26,7 @@ the interactive canvas preview and all the controls.
 | ✨ **Dither** | Floyd–Steinberg error diffusion and Bayer ordered dithering — both implemented from scratch, because Pillow's `dither=` argument is silently ignored. |
 | 🎮 **Palettes** | NES, PICO-8, Game Boy DMG, Sweetie 16, CGA, greyscale — or your own hex list. |
 | 🧵 **Craft patterns** | Symbol chart with numbered margins, colour legend, stitch counts, repeats. |
+| ✏️ **Pixel editor** | Inspect, paint, eyedropper, bucket fill and erase straight on the canvas, with 50-step undo/redo. The legend, counts, chart and every export follow along. |
 | ⬇️ **Export** | PNG (16×–128×), CSV chart, Markdown, raw JSON. |
 | ⚡ **Live preview** | Canvas rendering, hover to inspect a cell, click to copy a hex value. |
 | 🌐 **Languages** | English and Italian, switchable from the header. Easy to add more. |
@@ -46,10 +47,11 @@ pixel-pattern-generator/
 ├── frontend/                    # Next.js App Router + TypeScript + Tailwind
 │   ├── src/
 │   │   ├── app/                 # page, layout, global styles
-│   │   ├── components/          # Dropzone, PixelCanvas, CraftPattern, …
-│   │   ├── hooks/               # useImageUpload, useTransformPipeline, …
+│   │   ├── components/          # Dropzone, PixelCanvas, PixelEditor, CraftPattern, …
+│   │   ├── hooks/               # useImageUpload, useTransformPipeline, usePixelEdit, …
 │   │   ├── lib/                 # API client, download/export helpers
 │   │   │   ├── i18n/            # en.ts (source of truth) + one file per locale
+│   │   │   ├── pixelEdit.ts     # grid maths (paint, flood fill, recount) — pure
 │   │   │   └── version.ts       # APP_VERSION, shown in the footer
 │   │   └── types/               # shared TS types (mirror the API contract)
 │   └── package.json
@@ -96,6 +98,49 @@ carrying a catalogue key and are rendered with `localizeError()`.
 
 > Server-rendered SEO metadata and the JSON-LD in `StructuredData` stay in
 > English: they are read by crawlers, not by the person using the app.
+
+## Pixel editor
+
+The converted grid is editable in the browser. Pick a tool, pick a colour, click
+or drag on the canvas:
+
+| Tool | Does |
+| --- | --- |
+| 🔍 **Inspect** *(default)* | Hover to read a cell, click to copy its hex value — the original behaviour, unchanged. |
+| 🖌️ **Paint** | Applies the armed palette colour. Drag to paint a stroke. |
+| 💧 **Pick colour** | Eyedropper: makes the clicked cell's colour the active one. |
+| 🪣 **Fill** | 4-connected bucket fill. |
+| 🧽 **Erase** | Paints the **Transparent background** colour. |
+
+**Undo / redo** is `Cmd/Ctrl+Z` and `Cmd/Ctrl+Shift+Z` (`Ctrl+Y` also works),
+bounded at 50 steps. The shortcuts stand down while you are typing in a text
+field, so they never fight the custom-palette box.
+
+### Why this needs no backend change
+
+`POST /api/pattern` re-derives the legend, per-colour counts, percentages, chart,
+CSV and Markdown **from whatever grid it is handed**. So the edited grid is simply
+posted there instead of the server's, debounced by 250 ms, and the entire craft
+pipeline plus every export stays in sync for free. The edited grid lives in
+client state (`usePixelEdit`) and is never uploaded.
+
+Two details worth knowing if you extend this:
+
+- **The eraser can add a colour.** The transparent background is not guaranteed
+  to be one of the quantiser's choices, and a grid stores palette *indexes*, so
+  the colour is appended on first use — **together with a chart symbol**, because
+  the backend indexes `symbols[index]` directly. Grid, palette and symbols are
+  therefore always sent as one unit.
+- **A colour painted over completely stays in the legend at `0` stitches.** The
+  palette is deliberately not compacted, because compacting renumbers the grid
+  while the undo stack holds grids in the original indexing.
+
+Changing any conversion setting — or pressing **Re-run** — rebuilds the grid from
+the source image and discards manual edits. Re-run asks first; a settings change
+says so in a toast rather than dropping the work silently.
+
+> Painting needs a pointer. The tools and the history buttons are fully keyboard
+> accessible, but there is no keyboard cursor on the canvas yet.
 
 ## Versioning and the changelog
 
