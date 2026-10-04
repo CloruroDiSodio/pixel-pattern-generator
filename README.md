@@ -56,6 +56,7 @@ pixel-pattern-generator/
 │   │   └── types/               # shared TS types (mirror the API contract)
 │   └── package.json
 ├── netlify.toml                 # Netlify build config
+├── dev.sh                       # start both dev servers, one Ctrl+C
 ├── CHANGELOG.md                 # user-visible changes per release
 ├── ROADMAP.md                   # feature planning: priorities, effort, constraints
 └── README.md
@@ -167,7 +168,41 @@ Every user-visible change also gets a `CHANGELOG.md` entry, in
 
 > **Run the two servers in two separate terminals.** Neither command returns to the
 > prompt, so starting the frontend in the same terminal as the backend will look
-> like it hung.
+> like it hung. Or skip both terminals with [`./dev.sh`](#one-command-dev-server).
+
+### One-command dev server
+
+```bash
+./dev.sh
+```
+
+Starts both servers in one terminal, tagging every line `[api]` / `[web]`, and
+stops both on a single `Ctrl+C`:
+
+```text
+[api] INFO:     Application startup complete.
+[web]  ✓ Ready in 1874ms
+```
+
+```bash
+./dev.sh --api-only      # just uvicorn
+./dev.sh --web-only      # just Next
+API_PORT=9000 ./dev.sh   # move the backend
+```
+
+It is a plain shell script rather than `npm-run-all` / `concurrently` on purpose:
+those are two more packages in an exact-pinned tree that Dependabot tracks, and
+the only thing needed here is to fork two processes and reap them. It also
+starts each server in its **own process group**, so `Ctrl+C` takes down uvicorn's
+reloader and worker rather than orphaning them and leaving port 8000 bound.
+
+> `API_PORT` only moves the backend. The browser talks to the URL baked into the
+> frontend bundle, so change `NEXT_PUBLIC_API_URL` in `frontend/.env.local` to
+> match (and restart `npm run dev` — the value is inlined at start time).
+
+The script **preflights rather than installs**: a missing `backend/.venv` or
+`frontend/node_modules` is reported with the exact command to fix it, instead of
+silently running `pip install` as a side effect of trying to start a server.
 
 ### 1. Backend — http://localhost:8000
 
@@ -214,7 +249,7 @@ cd frontend  && npm run typecheck && npm run lint && npm run build
 | `npm run dev` seems to hang | Expected: it's a server. Leave it running and use a second terminal. |
 | Frontend still hits the old backend URL | `NEXT_PUBLIC_*` values are inlined at **build/start** time. Editing `.env.local` requires restarting `npm run dev`. |
 | Want to check the production bundle | `npm run build && npm start` in `frontend/` instead of `npm run dev`. |
-| Stopping the servers | `Ctrl+C` in each terminal, or `pkill -f uvicorn` and `pkill -f 'next dev'`. |
+| Stopping the servers | `Ctrl+C` in each terminal, `./dev.sh`, or `pkill -f uvicorn` and `pkill -f 'next dev'`. |
 
 ## API
 
