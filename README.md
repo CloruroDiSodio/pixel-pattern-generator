@@ -28,6 +28,7 @@ the interactive canvas preview and all the controls.
 | 🧵 **Craft patterns** | Symbol chart with numbered margins, colour legend, stitch counts, repeats. |
 | ⬇️ **Export** | PNG (16×–128×), CSV chart, Markdown, raw JSON. |
 | ⚡ **Live preview** | Canvas rendering, hover to inspect a cell, click to copy a hex value. |
+| 🌐 **Languages** | English and Italian, switchable from the header. Easy to add more. |
 
 ## Project structure
 
@@ -48,11 +49,66 @@ pixel-pattern-generator/
 │   │   ├── components/          # Dropzone, PixelCanvas, CraftPattern, …
 │   │   ├── hooks/               # useImageUpload, useTransformPipeline, …
 │   │   ├── lib/                 # API client, download/export helpers
+│   │   │   ├── i18n/            # en.ts (source of truth) + one file per locale
+│   │   │   └── version.ts       # APP_VERSION, shown in the footer
 │   │   └── types/               # shared TS types (mirror the API contract)
 │   └── package.json
 ├── netlify.toml                 # Netlify build config
+├── CHANGELOG.md                 # user-visible changes per release
 └── README.md
 ```
+
+## Internationalisation
+
+The studio ships in **English** and **Italian**. Pick a language from the header;
+the choice is stored in `localStorage` under `ppg.locale` and falls back to the
+browser's preferred language on a first visit. `<html lang>` follows the active
+locale, and numbers are formatted per locale (`12,345` vs `12.345`).
+
+Everything lives in `frontend/src/lib/i18n/`:
+
+| File | Role |
+| --- | --- |
+| `en.ts` | The catalogue of every user-facing string, and the source of `TranslationKey`. |
+| `it.ts` | Italian, typed `Record<TranslationKey, string>`. |
+| `config.ts` | `LOCALES`, `LOCALE_META` (English + native names) and browser detection. |
+| `index.ts` | `DICTIONARIES`, the `translate()` helper and `LocalizedError`. |
+
+### Adding a language
+
+1. Append the code to `LOCALES` in `config.ts`.
+2. Add a `LOCALE_META` entry (its own name, so people can find it).
+3. Copy `it.ts`, fill in every key, and register it in `DICTIONARIES`.
+
+Because each catalogue is typed against `TranslationKey`, **step 3 is enforced by
+the compiler**: a missing string is a build error rather than a silent fallback
+to English.
+
+```bash
+# Verify after adding or changing a catalogue
+cd frontend && npm run typecheck && npm run lint
+```
+
+Components read strings with `useTranslate()` / `useI18n()`. Errors that are
+raised outside React (the API client, the PNG export) throw a `LocalizedError`
+carrying a catalogue key and are rendered with `localizeError()`.
+
+> Server-rendered SEO metadata and the JSON-LD in `StructuredData` stay in
+> English: they are read by crawlers, not by the person using the app.
+
+## Versioning and the changelog
+
+The app follows [Semantic Versioning](https://semver.org). Two files hold the
+release number and **must be bumped together**:
+
+| File | Symbol | Where it shows up |
+| --- | --- | --- |
+| `frontend/src/lib/version.ts` | `APP_VERSION` | Footer |
+| `backend/app/__init__.py` | `__version__` | `GET /` and `GET /api/health` |
+
+Every user-visible change also gets a `CHANGELOG.md` entry, in
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) format — added under
+`[Unreleased]`, then rolled into a version heading at release time.
 
 ## Quick start
 

@@ -1,6 +1,6 @@
 {
   "name": "pixel-pattern-generator-frontend",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Next.js front-end for the Pixel Art & Pattern Generator",
   "scripts": {

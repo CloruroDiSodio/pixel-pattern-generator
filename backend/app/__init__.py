@@ -7,6 +7,6 @@ The package is intentionally split into three modules:
 * ``main``      – the FastAPI application exposing the HTTP API.
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 
 __all__ = ["__version__"]
