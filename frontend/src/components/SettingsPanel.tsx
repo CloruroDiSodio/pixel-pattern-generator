@@ -91,6 +91,14 @@ export default function SettingsPanel({
         </button>
       </header>
 
+      {/* Every control below is inert until an image exists. Saying so beats
+          leaving the user to work out why dragging a slider does nothing. */}
+      {disabled ? (
+        <p className="rounded-lg border border-ink-700 bg-ink-900/60 px-3 py-2 text-xs text-slate-400">
+          {t('settings.disabledHint')}
+        </p>
+      ) : null}
+
       <Slider
         label={t('settings.gridWidth')}
         value={settings.grid_width}

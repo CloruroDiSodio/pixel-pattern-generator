@@ -32,6 +32,15 @@
     @apply h-4 w-4 rounded-full border-0 bg-accent-soft;
   }
 
+  /* A disabled control must *look* disabled. These are inert until an image is
+     loaded, and at full opacity they read as live controls - the exact problem
+     WCAG 1.4.11 is about. Inactive controls are exempt from the contrast
+     minimums, which is why the same 45% the buttons already use is fine here. */
+  input[type='range']:disabled,
+  input[type='color']:disabled {
+    @apply cursor-not-allowed opacity-45;
+  }
+
   input[type='color'] {
     @apply h-9 w-14 cursor-pointer rounded-lg border border-ink-600 bg-ink-800 p-1;
   }
@@ -54,7 +63,8 @@
   .text-input {
     @apply w-full rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-slate-100
       transition placeholder:text-slate-400 hover:border-ink-500
-      focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent;
+      focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent
+      disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-ink-600;
   }
 
   .btn {
