@@ -41,6 +41,7 @@ from .processor import (
     list_palettes,
     transform_image,
 )
+from .threads import list_thread_brands
 from .utils import DEFAULT_SYMBOLS
 
 logger = logging.getLogger("app.security")
@@ -199,6 +200,9 @@ class OptionsResponse(BaseModel):
     ditherModes: List[str]
     paletteSorts: List[str]
     symbols: List[str]
+    #: Thread brands the legend can be matched against.  ``"none"`` is implicit -
+    #: it is the absence of a brand, not a table.
+    threadBrands: List[Dict[str, Any]]
     limits: Dict[str, int]
     defaults: Dict[str, Any]
 
@@ -214,6 +218,25 @@ class PatternRequest(BaseModel):
     symbols: Optional[List[str]] = None
     repeat_x: int = Field(default=1, alias="repeatX", ge=1, le=20)
     repeat_y: int = Field(default=1, alias="repeatY", ge=1, le=20)
+    #: Match every palette colour onto a thread brand's table.  Optional: with no
+    #: brand the legend, CSV and Markdown are exactly what they were before.
+    thread_brand: str = Field(default="none", alias="threadBrand", max_length=32)
+    #: Fabric count the skein estimate assumes; an assumption worth stating rather
+    #: than hiding, because the same skein covers twice as many stitches on 28
+    #: count as on 14.
+    fabric_count: int = Field(default=14, alias="fabricCount", ge=6, le=40)
+
+
+class PatternThreadModel(BaseModel):
+    """The brand's thread recommended for one palette colour."""
+
+    brand: str
+    code: str
+    name: str
+    hex: str
+    #: Whole skeins to buy, including the waste allowance.  ``0`` for a colour
+    #: that ended up with no stitches.
+    skeins: int
 
 
 class PatternLegendEntry(BaseModel):
@@ -223,6 +246,8 @@ class PatternLegendEntry(BaseModel):
     symbol: str
     count: int
     percent: float
+    #: ``None`` when no thread brand was requested.
+    thread: Optional[PatternThreadModel] = None
 
 
 class PatternResponse(BaseModel):
@@ -238,6 +263,10 @@ class PatternResponse(BaseModel):
     legend: List[PatternLegendEntry]
     csv: str
     markdown: str
+    threadBrand: str
+    fabricCount: int
+    #: ``null`` when no brand is selected - there is nothing to estimate against.
+    stitchesPerSkein: Optional[int] = None
 
 
 # --------------------------------------------------------------------------- #
@@ -272,6 +301,7 @@ def options() -> OptionsResponse:
         ditherModes=list(DITHER_MODES),
         paletteSorts=list(PALETTE_SORTS),
         symbols=list(DEFAULT_SYMBOLS),
+        threadBrands=list_thread_brands(),
         limits={
             "minGridSize": MIN_GRID_SIZE,
             "maxGridSize": MAX_GRID_SIZE,
@@ -383,6 +413,8 @@ def pattern(payload: PatternRequest) -> PatternResponse:
             title=payload.title,
             repeat_x=payload.repeat_x,
             repeat_y=payload.repeat_y,
+            thread_brand=payload.thread_brand,
+            fabric_count=payload.fabric_count,
         )
     except ProcessingError as error:
         logger.warning("rejected pattern request: %s", error)
@@ -401,6 +433,9 @@ def pattern(payload: PatternRequest) -> PatternResponse:
         legend=result.legend,  # type: ignore[arg-type]
         csv=result.csv,
         markdown=result.markdown,
+        threadBrand=result.thread_brand,
+        fabricCount=result.fabric_count,
+        stitchesPerSkein=result.stitches_per_skein,
     )
 
 

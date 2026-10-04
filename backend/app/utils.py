@@ -11,7 +11,7 @@ from __future__ import annotations
 import csv
 import io
 import math
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 RGB = Tuple[int, int, int]
 
@@ -264,6 +264,7 @@ def _legend_rows(
     grid: Sequence[Sequence[int]],
     repeat_x: int,
     repeat_y: int,
+    threads: Optional[Sequence[Optional[Mapping[str, object]]]] = None,
 ) -> List[Dict[str, object]]:
     counts = stitch_counts(grid)
     total = max(1, len(grid) * max(1, len(grid[0]))) * repeat_x * repeat_y
@@ -281,7 +282,47 @@ def _legend_rows(
                 "percent": round((count / total) * 100, 2),
             }
         )
+        if threads is not None:
+            thread = threads[index] if index < len(threads) else None
+            rows[-1].update(
+                {
+                    "thread": f"{thread['brand']} {thread['code']}" if thread else "",
+                    "threadName": str(thread["name"]) if thread else "",
+                    "skeins": thread["skeins"] if thread else 0,
+                }
+            )
     return rows
+
+
+#: Optional thread block handed to the exporters by :func:`app.processor.build_pattern`.
+#:
+#: The keys are documented here because ``utils`` deliberately imports nothing
+#: from ``threads`` - ``threads`` is built on top of ``utils``, not the other way
+#: round.  Keeping the dependency pointing one way is what lets both stay free of
+#: Pillow and FastAPI.
+#:
+#: * ``brand``            – display name of the brand, e.g. ``"DMC"``
+#: * ``fabricCount``      – the count the skein estimate assumes
+#: * ``stitchesPerSkein`` – stitches one skein covers on that fabric
+#: * ``rows``             – one record per palette index, or ``None`` for no brand
+ThreadBlock = Mapping[str, object]
+
+
+def _thread_header(threads: Optional[ThreadBlock]) -> List[str]:
+    """The legend header, widened with the thread columns when matching is on."""
+
+    header = ["Symbol", "Colour", "Hex", "Stitches", "Percent"]
+    if threads:
+        header += ["Thread", "Thread name", "Skeins"]
+    return header
+
+
+def _thread_cells(entry: Mapping[str, object]) -> List[object]:
+    """The thread cells for one legend row (empty when no brand is selected)."""
+
+    if "thread" not in entry:
+        return []
+    return [entry["thread"], entry["threadName"], entry["skeins"]]
 
 
 def grid_to_csv(
@@ -292,8 +333,13 @@ def grid_to_csv(
     title: str = "Pixel pattern",
     repeat_x: int = 1,
     repeat_y: int = 1,
+    threads: Optional[ThreadBlock] = None,
 ) -> str:
-    """Render the pattern as CSV (legend + chart), ready to download."""
+    """Render the pattern as CSV (legend + chart), ready to download.
+
+    The Thread / Thread name / Skeins columns are appended only when a thread
+    brand was requested, so a plain export stays byte-for-byte what it was.
+    """
 
     width = len(grid[0]) if grid else 0
     height = len(grid)
@@ -308,10 +354,22 @@ def grid_to_csv(
     writer.writerow(["Stitch size", f"{width} x {height} stitches"])
     writer.writerow(["Repeats", f"{repeat_x} x {repeat_y}"])
     writer.writerow(["Total stitches", total])
+    if threads:
+        # The fabric count travels with the export: a skein estimate is only
+        # meaningful next to the count it was computed for.
+        writer.writerow(["Thread brand", threads["brand"]])
+        writer.writerow(
+            [
+                "Skein estimate",
+                f"{threads['fabricCount']} ct fabric, "
+                f"{threads['stitchesPerSkein']} stitches per skein",
+            ]
+        )
     writer.writerow([])
 
-    writer.writerow(["Symbol", "Colour", "Hex", "Stitches", "Percent"])
-    for entry in _legend_rows(palette, labels, symbols, grid, repeat_x, repeat_y):
+    rows = threads["rows"] if threads else None  # type: ignore[index]
+    writer.writerow(_thread_header(threads))
+    for entry in _legend_rows(palette, labels, symbols, grid, repeat_x, repeat_y, rows):
         writer.writerow(
             [
                 entry["symbol"],
@@ -320,6 +378,7 @@ def grid_to_csv(
                 entry["count"],
                 f"{entry['percent']}%",
             ]
+            + [csv_safe(cell) for cell in _thread_cells(entry)]
         )
     writer.writerow([])
 
@@ -338,8 +397,12 @@ def grid_to_markdown(
     title: str = "Pixel pattern",
     repeat_x: int = 1,
     repeat_y: int = 1,
+    threads: Optional[ThreadBlock] = None,
 ) -> str:
-    """Render the pattern as a Markdown document (handy for sharing)."""
+    """Render the pattern as a Markdown document (handy for sharing).
+
+    As with the CSV, the thread columns only appear when a brand was requested.
+    """
 
     width = len(grid[0]) if grid else 0
     height = len(grid)
@@ -351,16 +414,34 @@ def grid_to_markdown(
     lines.append(f"- **Size:** {width} x {height} stitches")
     lines.append(f"- **Repeats:** {repeat_x} x {repeat_y}")
     lines.append(f"- **Total stitches:** {total}")
+    if threads:
+        lines.append(f"- **Thread brand:** {threads['brand']}")
+        lines.append(
+            f"- **Skein estimate:** {threads['fabricCount']} ct fabric, "
+            f"{threads['stitchesPerSkein']} stitches per skein"
+        )
     lines.append("")
     lines.append("## Legend")
     lines.append("")
-    lines.append("| Symbol | Colour | Hex | Stitches | Percent |")
-    lines.append("| :----: | ------ | --- | -------: | ------: |")
-    for entry in _legend_rows(palette, labels, symbols, grid, repeat_x, repeat_y):
-        lines.append(
+    lines.append(
+        "| Symbol | Colour | Hex | Stitches | Percent | Thread | Thread name | Skeins |"
+        if threads
+        else "| Symbol | Colour | Hex | Stitches | Percent |"
+    )
+    lines.append(
+        "| :----: | ------ | --- | -------: | ------: | ------ | ---------- | ------: |"
+        if threads
+        else "| :----: | ------ | --- | -------: | ------: |"
+    )
+    rows = threads["rows"] if threads else None  # type: ignore[index]
+    for entry in _legend_rows(palette, labels, symbols, grid, repeat_x, repeat_y, rows):
+        line = (
             f"| `{entry['symbol']}` | {markdown_safe(entry['label'])} | `{entry['hex']}` | "
             f"{entry['count']} | {entry['percent']}% |"
         )
+        for cell in _thread_cells(entry):
+            line += f" {cell} |"
+        lines.append(line)
     lines.append("")
     lines.append("## Chart")
     lines.append("")

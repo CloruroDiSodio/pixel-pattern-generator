@@ -24,6 +24,15 @@ from PIL import Image, ImageDraw, ImageOps, UnidentifiedImageError
 
 logger = logging.getLogger("app.processor")
 
+from .threads import (
+    NO_THREAD,
+    THREAD_BRANDS,
+    THREAD_FABRIC_COUNT,
+    ThreadError,
+    legend_threads,
+    stitches_per_skein,
+    validate_thread_brand,
+)
 from .utils import (
     MAX_COLORS,
     RGB,
@@ -52,6 +61,8 @@ __all__ = [
     "transform_image",
     "build_pattern",
     "list_palettes",
+    "THREAD_BRANDS",
+    "THREAD_FABRIC_COUNT",
     "MAX_IMAGE_BYTES",
     "MAX_GRID_SIZE",
     "MIN_GRID_SIZE",
@@ -175,6 +186,14 @@ BUILT_IN_PALETTES: Dict[str, Dict[str, object]] = {
             ("#000000", "Black"), ("#404040", "Dark Grey"),
             ("#808080", "Grey"), ("#BFBFBF", "Light Grey"), ("#FFFFFF", "White"),
         ],
+    },
+    # Built from the thread table rather than duplicated: one row of data serves
+    # both this preset and the legend's thread matching, so a shade can never be
+    # one colour in one place and another colour in the other.
+    "dmc": {
+        "name": "DMC threads",
+        "description": "Snap the image to stitchable DMC stranded cotton shades.",
+        "colors": THREAD_BRANDS["dmc"].palette_entries(),
     },
 }
 
@@ -314,6 +333,12 @@ class PatternResult:
     legend: List[Dict[str, object]]
     csv: str
     markdown: str
+    #: The brand the palette was matched against, or ``"none"``.
+    thread_brand: str = NO_THREAD
+    #: Fabric count the skein estimate assumes (see ``app.threads``).
+    fabric_count: int = THREAD_FABRIC_COUNT
+    #: Stitches one skein covers, or ``None`` when no brand is selected.
+    stitches_per_skein: Optional[int] = None
 
     def to_dict(self) -> Dict[str, object]:
         return asdict(self)
@@ -762,11 +787,25 @@ def build_pattern(
     title: str = "Pixel pattern",
     repeat_x: int = 1,
     repeat_y: int = 1,
+    thread_brand: str = NO_THREAD,
+    fabric_count: int = THREAD_FABRIC_COUNT,
 ) -> PatternResult:
-    """Build a craft (cross stitch) chart from an already generated pixel grid."""
+    """Build a craft (cross stitch) chart from an already generated pixel grid.
+
+    ``thread_brand`` is matched *here* rather than in :func:`transform_image`: the
+    thread a swatch maps to does not depend on the photo, only on the palette, and
+    matching therefore also covers a hand-edited grid posted back from the editor.
+    """
 
     if not grid or not grid[0]:
         raise ProcessingError("the pattern grid is empty")
+
+    try:
+        resolved_brand = validate_thread_brand(thread_brand)
+    except ThreadError as error:
+        # Re-raised as the module's own error type: every user-triggerable failure
+        # out of the processor is a ProcessingError so the API can answer 400.
+        raise ProcessingError(str(error)) from error
 
     width = len(grid[0])
     height = len(grid)
@@ -780,6 +819,7 @@ def build_pattern(
 
     repeat_x = _as_int(repeat_x, "repeat_x", 1, 20)
     repeat_y = _as_int(repeat_y, "repeat_y", 1, 20)
+    fabric_count = _as_int(fabric_count, "fabric_count", 6, 40)
 
     chart_symbols = list(symbols) if symbols else assign_symbols([c.hex for c in palette])
     if len(chart_symbols) < len(palette):
@@ -795,18 +835,27 @@ def build_pattern(
         for index in row:
             counts[index] = counts.get(index, 0) + 1
 
+    stitches_per_colour = [counts.get(position, 0) * repeat_x * repeat_y for position in range(len(palette))]
+
+    # ``legend_threads`` needs the stitch counts before the legend can be built, and
+    # the skein count depends on them - which is why this is a separate pass rather
+    # than a per-row helper.
+    threads = _thread_block(hexes, stitches_per_colour, resolved_brand, fabric_count)
+
     for position, color in enumerate(palette):
-        stitches = counts.get(position, 0) * repeat_x * repeat_y
-        legend.append(
-            {
-                "index": position,
-                "hex": color.hex,
-                "label": color.label,
-                "symbol": chart_symbols[position],
-                "count": stitches,
-                "percent": round((stitches / max(1, total_stitches)) * 100, 2),
-            }
-        )
+        stitches = stitches_per_colour[position]
+        entry: Dict[str, object] = {
+            "index": position,
+            "hex": color.hex,
+            "label": color.label,
+            "symbol": chart_symbols[position],
+            "count": stitches,
+            "percent": round((stitches / max(1, total_stitches)) * 100, 2),
+            # ``None`` rather than a flat list of empty strings: the UI can tell
+            # "no brand matched" from "matched, needs no skein".
+            "thread": threads["rows"][position] if threads else None,  # type: ignore[index]
+        }
+        legend.append(entry)
 
     return PatternResult(
         title=title,
@@ -819,9 +868,42 @@ def build_pattern(
         column_labels=numbered_labels(width),
         grid=symbol_grid(grid, chart_symbols),
         legend=legend,
-        csv=grid_to_csv(grid, hexes, labels, chart_symbols, title, repeat_x, repeat_y),
-        markdown=grid_to_markdown(grid, hexes, labels, chart_symbols, title, repeat_x, repeat_y),
+        csv=grid_to_csv(grid, hexes, labels, chart_symbols, title, repeat_x, repeat_y, threads),
+        markdown=grid_to_markdown(
+            grid, hexes, labels, chart_symbols, title, repeat_x, repeat_y, threads
+        ),
+        thread_brand=resolved_brand,
+        fabric_count=fabric_count,
+        stitches_per_skein=(
+            stitches_per_skein(resolved_brand, fabric_count)
+            if threads
+            else None
+        ),
     )
+
+
+def _thread_block(
+    hexes: Sequence[str],
+    stitches: Sequence[int],
+    brand: str,
+    fabric_count: int,
+) -> Optional[Dict[str, object]]:
+    """Bundle the thread data the exporters and the HTTP layer both need.
+
+    ``utils`` cannot build this (it must stay free of ``threads``), so it is
+    assembled here, next to the code that has the counts.
+    """
+
+    if brand == NO_THREAD:
+        return None
+
+    rows = legend_threads(hexes, stitches, brand, fabric_count)
+    return {
+        "brand": THREAD_BRANDS[brand].name,
+        "fabricCount": fabric_count,
+        "stitchesPerSkein": stitches_per_skein(brand, fabric_count),
+        "rows": rows,
+    }
 
 
 
