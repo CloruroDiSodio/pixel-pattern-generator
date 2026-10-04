@@ -115,7 +115,6 @@ export function transformImage(
   form.append('dither', settings.dither);
   form.append('palette', settings.palette);
   form.append('paletteSort', settings.palette_sort);
-  form.append('previewScale', String(settings.preview_scale));
   form.append('gridLines', String(settings.grid_lines));
   if (settings.custom_palette.trim()) {
     form.append('customPalette', settings.custom_palette.trim());

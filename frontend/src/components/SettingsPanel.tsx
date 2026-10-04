@@ -190,17 +190,7 @@ export default function SettingsPanel({
         </div>
       </div>
 
-      <div className="space-y-3 border-t border-ink-700 pt-4">
-        <Slider
-          label="Preview size"
-          value={settings.preview_scale}
-          min={1}
-          max={40}
-          suffix="×"
-          hint="Pixels per cell in the exported PNG"
-          disabled={disabled}
-          onChange={(value) => onChange('preview_scale', value)}
-        />
+      <div className="border-t border-ink-700 pt-4">
         <Toggle
           label="Grid lines"
           checked={settings.grid_lines}

@@ -116,7 +116,6 @@ export interface TransformSettings {
   custom_palette: string;
   background: string;
   palette_sort: PaletteSort;
-  preview_scale: number;
   grid_lines: boolean;
 }
 

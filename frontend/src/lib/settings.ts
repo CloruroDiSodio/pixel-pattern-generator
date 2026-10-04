@@ -11,7 +11,6 @@ export const DEFAULT_SETTINGS: TransformSettings = {
   custom_palette: '',
   background: '',
   palette_sort: 'usage',
-  preview_scale: 16,
   grid_lines: true,
 };
 
