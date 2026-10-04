@@ -215,6 +215,54 @@ actually carry to a needlework shop.
 
 Blocked-ish by the rate limit (§5). Needs a **batch endpoint**, not N requests.
 
+#### F11. Light theme switch — `TODO` · **effort: M–L**
+
+A light/dark toggle in the header, persisted under `ppg.theme`, defaulting to the
+OS preference. Currently **no theming exists at all** — there is no `dark:`
+variant, no `prefers-color-scheme` and no `data-theme` anywhere in `src/`.
+
+**This is not a polish item — it is a refactor.** Colours are hardcoded Tailwind
+utilities in **65 places across 11 files** (40 × `slate-*`, 25 × `ink-*`), not
+CSS variables. The darkest offenders: `CraftPattern.tsx` (18), `page.tsx` (16),
+`controls.tsx` (7), `Dropzone.tsx` (6).
+
+Pick one approach and do not mix them:
+
+- [ ] **A — CSS custom properties** (recommended): promote the 12 custom tokens
+      (`ink-950…500`, `accent/soft/strong`, `mint`, `amber`, `rose`) to variables
+      in `globals.css`, alias them in `tailwind.config.ts`, and replace `slate-*`
+      with semantic tokens (`--fg-muted`, `--border`, `--surface`). One place
+      changes per token, and F9's print styles can reuse the same variables.
+- [ ] **B — `darkMode: 'class'` + `dark:` prefixes** on all 65 usages. Mechanical
+      and safe, but every future component must remember the prefix.
+
+Acceptance criteria beyond the toggle itself:
+
+- [ ] **WCAG AA re-verified against the *light* panel backgrounds.** This is not
+      optional: the README documents that `slate-500` was already removed for
+      measuring 3.7:1–4.2:1 on dark. The same audit has to be redone inverted.
+- [ ] `CraftPattern.tsx` is the highest-risk file — its symbol glyphs and cell
+      backgrounds must stay legible and colour-accurate in both themes.
+- [ ] **No flash of the wrong theme.** The page is statically prerendered, so the
+      stored choice must be applied before first paint — a small blocking inline
+      script in `layout.tsx`, mirroring how `I18nProvider` defers hydration.
+      `next-themes` would solve this but is a **new dependency**; see §5 on
+      dependency discipline before reaching for it.
+- [ ] `layout.tsx:53` hardcodes `themeColor: '#08090d'` and
+      `colorScheme: 'dark'` — both need to follow the active theme.
+- [ ] `PixelCanvas.tsx:79,88` draws grid lines as literal `rgba(0,0,0,…)`;
+      re-tune the two opacities for a light background.
+- [ ] **The artwork must not be tinted.** Swatch legibility in `PaletteStrip` is
+      already theme-independent — `contrastText()` (`download.ts:120`) computes
+      from the swatch hex, not the theme — so verify it stays correct rather
+      than changing it.
+- [ ] New catalogue keys in `en.ts` **and** `it.ts` (see §5).
+
+**Files:** `app/globals.css`, `tailwind.config.ts`, `app/layout.tsx`, all 11
+components above, new `hooks/useTheme.ts`, `en.ts` + `it.ts`
+**Tests:** the hook's storage + OS-preference fallback, no-FOUC behaviour, and a
+contrast assertion per theme so the AA audit cannot silently regress.
+
 ---
 
 ## 4. Sequencing
@@ -227,12 +275,18 @@ Blocked-ish by the rate limit (§5). Needs a **batch endpoint**, not N requests.
 4. F2   thread brand matching                         ← the craft differentiator
 5. F7   project save / Import JSON                    ← stops losing work
 6. F5 / F6  crop + comparison slider
-7. F8 / F9 / F10  grid lock, pagination, batch
+7. F8 / F11  grid lock, light theme refactor
+8. F9 / F10  pagination, batch
 ```
 
 **Step 0 is not optional.** The backend has coverage-gated pytest; the frontend
 has nothing. F1's paint maths and history stack are exactly the kind of logic
 that regresses silently.
+
+**F11 is deliberately last among the "nice to have" items** even though a theme
+switch is often requested early. It touches 65 hardcoded colour utilities across
+11 files, and the WCAG AA audit has to be redone against light backgrounds —
+which is a real risk to the accessibility standard this project holds itself to.
 
 ---
 ## 5. Constraints any change must respect
@@ -243,6 +297,7 @@ that regresses silently.
 | **Two version files** | `frontend/src/lib/version.ts` → `APP_VERSION` and `backend/app/__init__.py` → `__version__`. They must be bumped together. |
 | **Changelog** | Every user-visible change gets a `CHANGELOG.md` entry under `[Unreleased]`, in Keep a Changelog format. |
 | **Rate limit** | 20 requests / 60 s per client IP on `/api/transform` (`main.py:54`). It is **in-memory, therefore per-process**. Expensive work (batch, multi-frame) must be a batch endpoint, not N calls, or users hit 429. |
+| **Dependency discipline** | Everything is exact-pinned, `requirements.lock` is hash-verified in CI, and Dependabot tracks pip/npm/actions (OWASP A08). Adding a runtime dependency is a deliberate decision, not a convenience — e.g. F11's `next-themes` suggestion should be weighed against doing it in ~15 lines of inline script. |
 | **Format allowlist is a security control** | `ALLOWED_FORMATS` (`processor.py:411`) exists to keep decoders with memory-safety bugs (CVE-2026-25990) unreachable on Python 3.9. Do not add a format casually. |
 | **Python version split** | Pillow is pinned with markers: `>=3.10` → 12.1.1 (patched), `<3.10` → 11.3.0. `tests/test_lockfile.py` fails the build if either branch goes missing. |
 | **next@14 is unsupported** | Tracked as separate work; the static export is why the RSC advisories are unreachable in this topology. Do not add Server Functions. |
