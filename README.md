@@ -55,6 +55,7 @@ pixel-pattern-generator/
 │   └── package.json
 ├── netlify.toml                 # Netlify build config
 ├── CHANGELOG.md                 # user-visible changes per release
+├── ROADMAP.md                   # feature planning: priorities, effort, constraints
 └── README.md
 ```
 
