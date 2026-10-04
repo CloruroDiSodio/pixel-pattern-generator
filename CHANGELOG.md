@@ -14,6 +14,74 @@ The version lives in two places and must be bumped together:
 
 Nothing yet.
 
+## [1.2.0] - 2026-10-04
+
+### Added
+
+- **A pixel editor.** The result is no longer read-only: the canvas now takes
+  **inspect · paint · eyedropper · fill · erase**, and every edit feeds straight
+  into the rest of the app.
+  - **No backend work was needed.** `/api/pattern` re-derives the legend, per
+    colour counts, percentages, chart, CSV and Markdown from whatever grid it is
+    given, so a hand-edited grid keeps the entire craft pipeline and every export
+    in sync. This is what made the editor cheap to build.
+  - **Inspect is the default tool** and behaves exactly as before — hover to read
+    a cell, click to copy its hex value. Editing is additive; the existing
+    click-to-copy is never taken away.
+  - Paint and erase respond to click *and* drag; the canvas takes pointer
+    capture during a stroke, so a drag that leaves the element (or scrolls on a
+    touch screen) still behaves.
+  - **Undo / redo**, `Cmd/Ctrl+Z` and `Cmd/Ctrl+Shift+Z` (`Ctrl+Y` also works), with
+    history bounded at 50 steps. The shortcuts stand down while focus is inside a
+    text field, so they do not fight the custom-palette input.
+  - Clicking a palette swatch now **arms that colour for painting**; copying a
+    hex value moved to a button in the strip's detail line, since one swatch
+    cannot carry two nested interactive controls.
+  - The eraser paints the **Transparent background** colour. That colour is not
+    guaranteed to be one of the quantiser's choices, so it is appended to the
+    palette on first use, with a chart symbol appended alongside it.
+  - A **"Edited"** badge marks unsaved-by-the-server work, **Re-run** asks for
+    confirmation before discarding it, and any other change to the conversion
+    settings says so in a toast rather than dropping the edits silently.
+  - Palette percentages are recomputed from the edited grid, so the swatches keep
+    adding up to 100 %.
+  - Accessibility: every tool is a real `<button>` with `aria-pressed` inside a
+    `toolbar` role, the shortcuts are documented in the panel, and the canvas
+    keeps its `role="img"` and `aria-label`.
+- **The settings controls now look disabled before an image is loaded.** They
+  already were — `disabled={!image}` has always been passed through — but
+  `.select`, `.text-input`, `input[type=range]` and `input[type=color]` had no
+  `disabled:` styling, so they rendered at full opacity and read as live controls
+  that happened to do nothing. They now dim and drop the pointer cursor like the
+  buttons already did, and the panel explains why: *"Add an image to turn these
+  controls on."*
+
+### Changed
+
+- `useTransformPipeline` now owns only `POST /api/transform`. The
+  `/api/pattern` call moved into a new `usePatternSync` hook, which accepts an
+  optional edited grid. The split removes a cycle: the editor has to be built
+  from the transform, so the transform hook could not be given the editor's
+  output. Both are still debounced and abortable, and the page wires them
+  together.
+- New `lib/pixelEdit.ts` holds the grid maths as pure functions — `paintCell`,
+  `floodFill`, `recountPalette`, `withColor` — with no React and no I/O.
+- Italian translations for every new string.
+
+### Notes
+
+- A colour that is painted over completely stays in the legend at `0` stitches
+  rather than being dropped. Compacting the palette would renumber the grid, and
+  the undo stack holds grids in the original indexing, so pruning it would
+  introduce a real correctness hazard for a cosmetic gain.
+- Editing does not add backend load beyond what the app already did:
+  `/api/pattern` is *not* rate limited (only `/api/transform` is), and the
+  override is debounced at 250 ms, so a drag across the canvas produces one
+  request at the end of the stroke rather than one per pointer event.
+- The canvas is not yet keyboard-paintable — painting needs a pointer. The undo
+  stack and tool selection are fully keyboard accessible, and the canvas keeps
+  its `role="img"` description.
+
 ## [1.1.0] - 2026-10-04
 
 ### Added
@@ -84,6 +152,7 @@ Initial release.
 - Accessibility, SEO and performance work: WCAG AA contrast, keyboard-navigable
   controls, structured data, robots and sitemap, and memoised hot components.
 
-[Unreleased]: https://github.com/CloruroDiSodio/pixel-pattern-generator/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/CloruroDiSodio/pixel-pattern-generator/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/CloruroDiSodio/pixel-pattern-generator/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/CloruroDiSodio/pixel-pattern-generator/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/CloruroDiSodio/pixel-pattern-generator/releases/tag/v1.0.0
