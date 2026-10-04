@@ -147,6 +147,18 @@ export const it: Record<TranslationKey, string> = {
   'pattern.caption': 'Schema di {title}',
   'pattern.legend': 'Legenda',
   'pattern.threads': '{count} fili',
+  'pattern.thread': '{brand} {code} · {name}',
+  'pattern.skeins': '{count} rocce',
+  'pattern.skeinOne': '1 roccia',
+  'pattern.skeinNote':
+    'Le rocce sono stimate per tessuto a {count} punti (circa {stitches} punti per roccia). Controlla la cartella colori prima di acquistare.',
+
+  /* --- thread matching ---------------------------------------------------- */
+  'thread.brand': 'Marca del filato',
+  'thread.none': 'Colori senza marca',
+  'thread.noneHint': 'Mantieni i codici esadecimali, senza codici filato né rocce.',
+  'thread.brandHint':
+    'Abbina ogni colore alla tonalità {name} più vicina ({colors} nella tabella) e stima le rocce da acquistare.',
 
   /* --- export ----------------------------------------------------------- */
   'export.title': 'Esporta',

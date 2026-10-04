@@ -14,6 +14,12 @@ export const DEFAULT_SETTINGS: TransformSettings = {
   grid_lines: true,
 };
 
+/**
+ * Thread brand the pattern starts with: no matching, so nothing about the
+ * existing workflow changes until somebody asks for it.
+ */
+export const DEFAULT_THREAD_BRAND = 'none';
+
 /** Used until `/api/options` answers (or if the backend is unreachable). */
 export const FALLBACK_LIMITS = {
   minGridSize: 4,

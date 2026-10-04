@@ -149,6 +149,18 @@ export const en = {
   'pattern.caption': '{title} pattern chart',
   'pattern.legend': 'Legend',
   'pattern.threads': '{count} threads',
+  'pattern.thread': '{brand} {code} · {name}',
+  'pattern.skeins': '{count} skeins',
+  'pattern.skeinOne': '1 skein',
+  'pattern.skeinNote':
+    'Skeins assume {count}-count fabric (about {stitches} stitches per skein). Check a shade card before buying.',
+
+  /* --- thread matching ---------------------------------------------------- */
+  'thread.brand': 'Thread brand',
+  'thread.none': 'Plain colours (no brand)',
+  'thread.noneHint': 'Keep the hex labels, with no thread codes or skein counts.',
+  'thread.brandHint':
+    'Match every colour onto the closest {name} shade ({colors} in the table) and estimate the skeins to buy.',
 
   /* --- export ----------------------------------------------------------- */
   'export.title': 'Export',

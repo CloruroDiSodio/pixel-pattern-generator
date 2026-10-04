@@ -12,6 +12,7 @@ import PixelCanvas from '@/components/PixelCanvas';
 import PixelEditor from '@/components/PixelEditor';
 import SettingsPanel from '@/components/SettingsPanel';
 import StatusBanner from '@/components/StatusBanner';
+import { Select } from '@/components/controls';
 import { useImageUpload } from '@/hooks/useImageUpload';
 import { useLocalStorage } from '@/hooks/useLocalStorage';
 import { usePatternSync } from '@/hooks/usePatternSync';
@@ -20,7 +21,7 @@ import { usePixelEdit } from '@/hooks/usePixelEdit';
 import { useTransformPipeline } from '@/hooks/useTransformPipeline';
 import { API_BASE_URL, fetchApiOptions, fetchHealth, fetchPalettes } from '@/lib/api';
 import { recountPalette } from '@/lib/pixelEdit';
-import { DEFAULT_SETTINGS, FALLBACK_LIMITS } from '@/lib/settings';
+import { DEFAULT_SETTINGS, DEFAULT_THREAD_BRAND, FALLBACK_LIMITS } from '@/lib/settings';
 import { MAX_ZOOM, MIN_ZOOM } from '@/lib/zoom';
 import { APP_VERSION } from '@/lib/version';
 import type {
@@ -29,6 +30,7 @@ import type {
   PalettesResponse,
   PatternOptions,
   PatternResult,
+  ThreadBrandInfo,
   TransformResult,
   TransformSettings,
   ViewMode,
@@ -43,6 +45,14 @@ import type {
  */
 const EMPTY_SYMBOL_POOL: string[] = [];
 
+/**
+ * Stable empty list used until `/api/options` answers.
+ *
+ * Same reasoning as {@link EMPTY_SYMBOL_POOL}: a fresh `[]` per render would give
+ * the pattern view a new prop identity on every unrelated state change.
+ */
+const EMPTY_THREAD_BRANDS: ThreadBrandInfo[] = [];
+
 export default function StudioPage() {
   const { image, error: uploadError, acceptFile, clear } = useImageUpload();
   const [settings, setSettings] = useLocalStorage<TransformSettings>('ppg.settings', DEFAULT_SETTINGS);
@@ -50,6 +60,7 @@ export default function StudioPage() {
     title: 'My pattern',
     repeatX: 1,
     repeatY: 1,
+    threadBrand: DEFAULT_THREAD_BRAND,
   });
   const [view, setView] = useState<ViewMode>('pixels');
   const [zoom, setZoom] = useState(12);
@@ -148,6 +159,7 @@ export default function StudioPage() {
   /* --- derived values ---------------------------------------------------- */
 
   const limits = options?.limits ?? FALLBACK_LIMITS;
+  const threadBrands = options?.threadBrands ?? EMPTY_THREAD_BRANDS;
 
   const estimatedHeight = useMemo(() => {
     if (!image || image.width === 0) return 0;
@@ -384,6 +396,7 @@ export default function StudioPage() {
                 <PatternView
                   patternOptions={patternOptions}
                   setPatternOptions={setPatternOptions}
+                  threadBrands={threadBrands}
                   pattern={pattern}
                   transform={result}
                   busy={busy}
@@ -417,6 +430,8 @@ export default function StudioPage() {
 interface PatternViewProps {
   patternOptions: PatternOptions;
   setPatternOptions: (options: PatternOptions) => void;
+  /** Thread brands advertised by `/api/options`. */
+  threadBrands: ThreadBrandInfo[];
   pattern: PatternResult | null;
   /** The grid being charted - edited or not. */
   transform: TransformResult | null;
@@ -427,12 +442,29 @@ interface PatternViewProps {
 function PatternView({
   patternOptions,
   setPatternOptions,
+  threadBrands,
   pattern,
   transform,
   busy,
 }: PatternViewProps) {
   const t = useTranslate();
   const { intlLocale } = useI18n();
+
+  /**
+   * "No brand" is a real choice, not the absence of one, so it is always offered
+   * - even when the backend lists no tables. It is also the only entry that
+   * needs translating; the brand names are proper nouns from the API.
+   */
+  const brandOptions = useMemo(
+    () => [
+      { value: DEFAULT_THREAD_BRAND, label: t('thread.none') },
+      ...threadBrands.map((brand) => ({ value: brand.id, label: brand.name })),
+    ],
+    [threadBrands, t],
+  );
+
+  const activeBrand = threadBrands.find((brand) => brand.id === patternOptions.threadBrand);
+
   return (
     <div className="space-y-5">
       <section className="panel space-y-4 p-5">
@@ -450,6 +482,18 @@ function PatternView({
               value={patternOptions.title}
               maxLength={120}
               onChange={(event) => setPatternOptions({ ...patternOptions, title: event.target.value })}
+            />
+          </div>
+          <div className="sm:col-span-3">
+            <Select
+              label={t('thread.brand')}
+              value={patternOptions.threadBrand}
+              options={brandOptions}
+              hint={t(activeBrand ? 'thread.brandHint' : 'thread.noneHint', {
+                name: activeBrand?.name ?? '',
+                colors: activeBrand?.colors ?? 0,
+              })}
+              onChange={(value) => setPatternOptions({ ...patternOptions, threadBrand: value })}
             />
           </div>
           <RepeatInput

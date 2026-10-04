@@ -43,6 +43,25 @@ export interface TransformResult {
   settings: TransformSettings & Record<string, unknown>;
 }
 
+/**
+ * The thread a palette colour was matched onto.
+ *
+ * `null`/`undefined` means no brand was requested, which is the default: the app
+ * has always worked in plain colours and that must stay free.
+ */
+export interface PatternThread {
+  /** Display name of the brand, e.g. "DMC". */
+  brand: string;
+  /** The thread's own code, e.g. "310" or "B5200". */
+  code: string;
+  /** Thread name, e.g. "Black". */
+  name: string;
+  /** The thread's own hex, which is close to - but not always - the swatch. */
+  hex: string;
+  /** Whole skeins to buy, `0` for a colour left with no stitches. */
+  skeins: number;
+}
+
 export interface PatternLegendEntry {
   index: number;
   hex: string;
@@ -50,6 +69,7 @@ export interface PatternLegendEntry {
   symbol: string;
   count: number;
   percent: number;
+  thread?: PatternThread | null;
 }
 
 export interface PatternResult {
@@ -66,6 +86,12 @@ export interface PatternResult {
   legend: PatternLegendEntry[];
   csv: string;
   markdown: string;
+  /** The brand the palette was matched against, `"none"` when off. */
+  threadBrand: ThreadBrandId;
+  /** Fabric count the skein estimate assumes. */
+  fabricCount: number;
+  /** Stitches one skein covers, `null` when no brand is selected. */
+  stitchesPerSkein: number | null;
 }
 
 export interface PaletteDefinition {
@@ -73,6 +99,15 @@ export interface PaletteDefinition {
   name: string;
   description: string;
   colors: PaletteColor[];
+}
+
+/** A thread brand advertised by `/api/options` (the table itself is far too big). */
+export interface ThreadBrandInfo {
+  id: string;
+  name: string;
+  description: string;
+  /** How many shades the table holds. */
+  colors: number;
 }
 
 export interface PalettesResponse {
@@ -86,6 +121,8 @@ export interface ApiOptions {
   ditherModes: string[];
   paletteSorts: string[];
   symbols: string[];
+  /** Thread brands the legend can be matched against (`none` is implicit). */
+  threadBrands: ThreadBrandInfo[];
   limits: {
     minGridSize: number;
     maxGridSize: number;
@@ -105,6 +142,12 @@ export type QuantizeMethod = 'mediancut' | 'maxcoverage' | 'fastoctree' | 'libim
 export type DitherMode = 'none' | 'floyd_steinberg' | 'bayer';
 export type PaletteSort = 'usage' | 'luminance' | 'hex';
 export type PaletteId = 'auto' | 'custom' | (string & {});
+
+/**
+ * Thread brand for the pattern legend. `'none'` is not a brand but the absence
+ * of one, and it is the default.
+ */
+export type ThreadBrandId = 'none' | (string & {});
 
 /** `grid[y][x]` is an index into the palette. */
 export type Grid = number[][];
@@ -142,10 +185,19 @@ export interface UploadedImage {
   size: number;
 }
 
+/**
+ * Options for the craft pattern - the chart, the legend and the text exports.
+ *
+ * `threadBrand` lives here rather than in `TransformSettings` on purpose: the
+ * brand does not change a single pixel, so it has no business re-running
+ * `/api/transform` (and discarding the editor's hand edits with it). It travels
+ * with the pattern options, which re-post `/api/pattern` and nothing else.
+ */
 export interface PatternOptions {
   title: string;
   repeatX: number;
   repeatY: number;
+  threadBrand: ThreadBrandId;
 }
 
 export type ViewMode = 'pixels' | 'pattern';

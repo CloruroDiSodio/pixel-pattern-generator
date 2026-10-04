@@ -169,6 +169,11 @@ export function buildPattern(
       symbols,
       repeatX: options.repeatX,
       repeatY: options.repeatY,
+      // Omitted when off rather than sent as "none": the backend defaults to no
+      // matching, which keeps the wire contract identical to a pre-F2 client.
+      ...(options.threadBrand && options.threadBrand !== 'none'
+        ? { threadBrand: options.threadBrand }
+        : {}),
     }),
     signal,
   });

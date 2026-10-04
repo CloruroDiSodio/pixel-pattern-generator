@@ -127,7 +127,17 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
             {t('pattern.threads', { count: pattern.legend.length })}
           </span>
         </h3>
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        {/* The skein estimate is only meaningful next to the fabric count it was
+            computed for, so the assumption is stated rather than hidden. */}
+        {pattern.threadBrand !== 'none' && pattern.stitchesPerSkein ? (
+          <p className="mt-1 text-[11px] text-slate-400">
+            {t('pattern.skeinNote', {
+              count: pattern.fabricCount,
+              stitches: pattern.stitchesPerSkein.toLocaleString(intlLocale),
+            })}
+          </p>
+        ) : null}
+        <ul className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {pattern.legend.map((entry) => (
             <li
               key={entry.index}
@@ -142,6 +152,19 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-xs text-slate-200">{entry.label}</span>
                 <span className="block font-mono text-[10px] text-slate-400">{entry.hex}</span>
+                {entry.thread ? (
+                  <span className="block truncate text-[10px] text-accent-soft">
+                    {t('pattern.thread', {
+                      brand: entry.thread.brand,
+                      code: entry.thread.code,
+                      name: entry.thread.name,
+                    })}
+                    {' · '}
+                    {t(entry.thread.skeins === 1 ? 'pattern.skeinOne' : 'pattern.skeins', {
+                      count: entry.thread.skeins.toLocaleString(intlLocale),
+                    })}
+                  </span>
+                ) : null}
               </span>
               <span className="text-right text-[11px] text-slate-400">
                 <span className="block font-medium text-slate-200">{entry.count}</span>
