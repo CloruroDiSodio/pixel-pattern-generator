@@ -1,6 +1,8 @@
 'use client';
 
 import { Select, Slider, Toggle } from '@/components/controls';
+import { useTranslate } from '@/components/I18nProvider';
+import type { TranslationKey, Translate } from '@/lib/i18n';
 import type {
   DitherMode,
   PaletteDefinition,
@@ -28,34 +30,38 @@ interface SettingsPanelProps {
   disabled?: boolean;
 }
 
-const RESIZE_LABELS: Record<ResizeMode, string> = {
-  pixelate: 'Pixelate (average blocks)',
-  sample: 'Sample (keep hard edges)',
-  smooth: 'Smooth (Lanczos)',
+/** Option labels, resolved lazily so they follow the active locale. */
+const RESIZE_LABELS: Record<ResizeMode, TranslationKey> = {
+  pixelate: 'resize.pixelate',
+  sample: 'resize.sample',
+  smooth: 'resize.smooth',
 };
 
-const QUANTIZE_LABELS: Record<QuantizeMethod, string> = {
-  mediancut: 'Median cut (balanced)',
-  maxcoverage: 'Max coverage (vivid)',
-  fastoctree: 'Fast octree (quick)',
-  libimagequant: 'libimagequant (best)',
+const QUANTIZE_LABELS: Record<QuantizeMethod, TranslationKey> = {
+  mediancut: 'quantize.mediancut',
+  maxcoverage: 'quantize.maxcoverage',
+  fastoctree: 'quantize.fastoctree',
+  libimagequant: 'quantize.libimagequant',
 };
 
-const DITHER_LABELS: Record<DitherMode, string> = {
-  none: 'None',
-  floyd_steinberg: 'Floyd–Steinberg',
-  bayer: 'Bayer (ordered)',
+const DITHER_LABELS: Record<DitherMode, TranslationKey> = {
+  none: 'dither.none',
+  floyd_steinberg: 'dither.floyd_steinberg',
+  bayer: 'dither.bayer',
 };
 
-const SORT_LABELS: Record<PaletteSort, string> = {
-  usage: 'Most used first',
-  luminance: 'Dark to light',
-  hex: 'Alphabetical',
+const SORT_LABELS: Record<PaletteSort, TranslationKey> = {
+  usage: 'sort.usage',
+  luminance: 'sort.luminance',
+  hex: 'sort.hex',
 };
 
 /** The `Set` is normalised away before comparison so no shared helper leaks in. */
-const toOptions = <T extends string>(labels: Record<T, string>): SelectOption<T>[] =>
-  (Object.entries(labels) as Array<[T, string]>).map(([value, label]) => ({ value, label }));
+const toOptions = <T extends string>(labels: Record<T, TranslationKey>, t: Translate): SelectOption<T>[] =>
+  (Object.entries(labels) as Array<[T, TranslationKey]>).map(([value, key]) => ({
+    value,
+    label: t(key),
+  }));
 
 /** All conversion knobs for the pixel pipeline. */
 export default function SettingsPanel({
@@ -68,71 +74,80 @@ export default function SettingsPanel({
   estimatedHeight,
   disabled = false,
 }: SettingsPanelProps) {
+  const t = useTranslate();
   const paletteOptions = [
     ...palettes.map((palette) => ({ value: palette.id as PaletteId, label: palette.name })),
-    { value: 'custom' as PaletteId, label: 'Custom…' },
+    { value: 'custom' as PaletteId, label: t('settings.paletteCustom') },
   ];
 
   return (
     <section className="panel space-y-5 p-5" aria-label="Conversion settings">
       <header className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">Settings</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+          {t('sidebar.settings')}
+        </h2>
         <button type="button" className="btn btn-ghost px-2 py-1 text-xs" onClick={onReset} disabled={disabled}>
-          Reset
+          {t('sidebar.reset')}
         </button>
       </header>
 
       <Slider
-        label="Grid width"
+        label={t('settings.gridWidth')}
         value={settings.grid_width}
         min={limits.minGridSize}
         max={limits.maxGridSize}
         disabled={disabled}
         hint={
           image
-            ? `≈ ${settings.grid_width} × ${estimatedHeight} stitches`
-            : `${limits.minGridSize}–${limits.maxGridSize} columns`
+            ? t('settings.gridWidthHintImage', {
+                width: settings.grid_width,
+                height: estimatedHeight,
+              })
+            : t('settings.gridWidthHintRange', {
+                min: limits.minGridSize,
+                max: limits.maxGridSize,
+              })
         }
         onChange={(value) => onChange('grid_width', value)}
       />
 
       <Slider
-        label="Colours"
+        label={t('settings.colours')}
         value={settings.max_colors}
         min={2}
         max={limits.maxColors}
         disabled={disabled}
-        hint="Cap on the palette size"
+        hint={t('settings.coloursHint')}
         onChange={(value) => onChange('max_colors', value)}
       />
 
       <Select<ResizeMode>
-        label="Resampling"
+        label={t('settings.resampling')}
         value={settings.resize_mode}
-        options={toOptions(RESIZE_LABELS)}
+        options={toOptions(RESIZE_LABELS, t)}
         disabled={disabled}
         onChange={(value) => onChange('resize_mode', value)}
       />
 
       <Select<QuantizeMethod>
-        label="Quantization"
+        label={t('settings.quantization')}
         value={settings.quantize_method}
-        options={toOptions(QUANTIZE_LABELS)}
+        options={toOptions(QUANTIZE_LABELS, t)}
         disabled={disabled}
         onChange={(value) => onChange('quantize_method', value)}
       />
 
       <Select<DitherMode>
-        label="Dithering"
+        label={t('settings.dithering')}
         value={settings.dither}
-        options={toOptions(DITHER_LABELS)}
-        hint="Error diffusion reveals extra shades"
+        options={toOptions(DITHER_LABELS, t)}
+        hint={t('settings.ditherHint')}
         disabled={disabled}
         onChange={(value) => onChange('dither', value)}
       />
 
       <Select<PaletteId>
-        label="Palette"
+        label={t('settings.palette')}
         value={settings.palette}
         options={paletteOptions}
         hint={palettes.find((palette) => palette.id === settings.palette)?.description}
@@ -143,7 +158,7 @@ export default function SettingsPanel({
       {settings.palette === 'custom' ? (
         <div className="animate-fade-in">
           <label className="field-label" htmlFor="custom-palette">
-            Custom colours
+            {t('settings.customColours')}
           </label>
           <input
             id="custom-palette"
@@ -154,22 +169,22 @@ export default function SettingsPanel({
             onChange={(event) => onChange('custom_palette', event.target.value)}
           />
           <p className="mt-1 text-[11px] text-slate-400">
-            Comma separated hex colours, up to {limits.maxColors}.
+            {t('settings.customColoursHint', { max: limits.maxColors })}
           </p>
         </div>
       ) : null}
 
       <Select<PaletteSort>
-        label="Palette order"
+        label={t('settings.paletteOrder')}
         value={settings.palette_sort}
-        options={toOptions(SORT_LABELS)}
+        options={toOptions(SORT_LABELS, t)}
         disabled={disabled}
         onChange={(value) => onChange('palette_sort', value)}
       />
 
       <div>
         <label className="field-label" htmlFor="background-colour">
-          Transparent background
+          {t('settings.background')}
         </label>
         <div className="flex items-center gap-2">
           <input
@@ -185,14 +200,14 @@ export default function SettingsPanel({
             disabled={disabled || !settings.background}
             onClick={() => onChange('background', '')}
           >
-            {settings.background ? 'Use white' : 'Using white'}
+            {settings.background ? t('settings.useWhite') : t('settings.usingWhite')}
           </button>
         </div>
       </div>
 
       <div className="border-t border-ink-700 pt-4">
         <Toggle
-          label="Grid lines"
+          label={t('settings.gridLines')}
           checked={settings.grid_lines}
           disabled={disabled}
           onChange={(value) => onChange('grid_lines', value)}

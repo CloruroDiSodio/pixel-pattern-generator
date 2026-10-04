@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { buildPattern, transformImage } from '@/lib/api';
+import { useI18n } from '@/components/I18nProvider';
 import type { PatternOptions, PatternResult, TransformResult, TransformSettings, UploadedImage } from '@/types';
 
 import { useDebouncedValue } from './useDebouncedValue';
@@ -46,6 +47,7 @@ export function useTransformPipeline(
   const [status, setStatus] = useState<PipelineStatus>('idle');
   const [error, setError] = useState<string | null>(null);
   const [nonce, setNonce] = useState(0);
+  const { t, localizeError } = useI18n();
 
   const debouncedSettings = useDebouncedValue(settings, 350);
   const debouncedPatternOptions = useDebouncedValue(patternOptions, 300);
@@ -77,11 +79,11 @@ export function useTransformPipeline(
       .catch((cause: unknown) => {
         if (controller.signal.aborted || isAbort(cause)) return;
         setStatus('error');
-        setError(cause instanceof Error ? cause.message : 'Unexpected error while processing.');
+        setError(localizeError(cause) || t('status.unexpected'));
       });
 
     return () => controller.abort();
-  }, [image, debouncedSettings, enabled, nonce]);
+  }, [image, debouncedSettings, enabled, nonce, localizeError, t]);
 
   useEffect(() => {
     if (!enabled || !transform) return undefined;
@@ -102,14 +104,12 @@ export function useTransformPipeline(
         if (controller.signal.aborted || isAbort(cause)) return;
         setPattern(null);
         setError(
-          cause instanceof Error
-            ? `Pattern generation failed: ${cause.message}`
-            : 'Pattern generation failed.',
+          localizeError(cause) || t('status.patternFailedShort'),
         );
       });
 
     return () => controller.abort();
-  }, [transform, debouncedPatternOptions, enabled]);
+  }, [transform, debouncedPatternOptions, enabled, localizeError, t]);
 
   return {
     transform,

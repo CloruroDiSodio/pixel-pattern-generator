@@ -1,5 +1,6 @@
 import { memo, useState } from 'react';
 
+import { useI18n } from '@/components/I18nProvider';
 import {
   downloadBlob,
   downloadText,
@@ -22,6 +23,7 @@ function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps
   const [scale, setScale] = useState<number>(32);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const { t, localizeError } = useI18n();
 
   if (!transform) return null;
 
@@ -39,9 +41,9 @@ function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps
         gridLines: transform.settings?.grid_lines ?? true,
       });
       downloadBlob(blob, `${base}-${scale}x.png`);
-      setMessage(`Saved ${base}-${scale}x.png`);
+      setMessage(t('export.saved', { file: `${base}-${scale}x.png` }));
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : 'PNG export failed.');
+      setMessage(localizeError(error));
     } finally {
       setBusy(false);
     }
@@ -49,7 +51,7 @@ function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps
 
   return (
     <div className="space-y-3">
-      <h3 className="field-label">Export</h3>
+      <h3 className="field-label">{t('export.title')}</h3>
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
@@ -57,14 +59,14 @@ function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps
           onClick={() => void exportPng()}
           disabled={disabled || busy}
         >
-          ⬇ PNG {scale}×
+          {t('export.png', { scale })}
         </button>
 
         <select
           className="select w-auto"
           value={scale}
           onChange={(event) => setScale(Number(event.target.value))}
-          aria-label="PNG export scale"
+          aria-label={t('export.pngScaleLabel')}
           disabled={disabled || busy}
         >
           {EXPORT_SCALES.map((value) => (
@@ -80,11 +82,11 @@ function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps
           onClick={() => {
             if (!pattern) return;
             downloadText(pattern.csv, `${base}.csv`, 'text/csv');
-            setMessage(`Saved ${base}.csv`);
+            setMessage(t('export.saved', { file: `${base}.csv` }));
           }}
           disabled={disabled || !pattern}
         >
-          ⬇ CSV chart
+          {t('export.csv')}
         </button>
 
         <button
@@ -93,11 +95,11 @@ function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps
           onClick={() => {
             if (!pattern) return;
             downloadText(pattern.markdown, `${base}.md`, 'text/markdown');
-            setMessage(`Saved ${base}.md`);
+            setMessage(t('export.saved', { file: `${base}.md` }));
           }}
           disabled={disabled || !pattern}
         >
-          ⬇ Markdown
+          {t('export.markdown')}
         </button>
 
         <button
@@ -105,11 +107,11 @@ function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps
           className="btn"
           onClick={() => {
             downloadText(JSON.stringify(transform, null, 2), `${base}.json`, 'application/json');
-            setMessage(`Saved ${base}.json`);
+            setMessage(t('export.saved', { file: `${base}.json` }));
           }}
           disabled={disabled}
         >
-          ⬇ JSON
+          {t('export.json')}
         </button>
       </div>
 

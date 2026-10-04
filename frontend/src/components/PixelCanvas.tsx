@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useRef, useState } from 'react';
 
+import { useTranslate } from '@/components/I18nProvider';
 import { fitZoom } from '@/lib/zoom';
 import type { PaletteColor } from '@/types';
 
@@ -40,6 +41,7 @@ function PixelCanvas({
 }: PixelCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const t = useTranslate();
   const [hover, setHover] = useState<Hover | null>(null);
 
   const height = grid.length;
@@ -136,9 +138,7 @@ function PixelCanvas({
           wrap. Either would resize this row and nudge the canvas below it, so the
           row gets a fixed height and both children are kept on a single line. */}
       <div className="flex min-h-7 items-center justify-between gap-3 text-xs text-slate-400">
-        <span className="shrink-0 font-mono">
-          {width} × {height} cells
-        </span>
+        <span className="shrink-0 font-mono">{t('canvas.dimensions', { width, height })}</span>
         {hover && hoveredColor ? (
           <span className="chip min-w-0 truncate">
             <span
@@ -150,9 +150,9 @@ function PixelCanvas({
         ) : (
           <span
             className="min-w-0 truncate"
-            title="Hover to inspect a cell · click to copy its hex value"
+            title={t('canvas.hint')}
           >
-            Hover to inspect a cell · click to copy its hex value
+            {t('canvas.hint')}
           </span>
         )}
       </div>
@@ -170,7 +170,7 @@ function PixelCanvas({
             if (color) onPick?.(color, cell);
           }}
           role="img"
-          aria-label={`Pixel preview, ${width} by ${height} cells, ${palette.length} colours`}
+          aria-label={t('canvas.alt', { width, height, colours: palette.length })}
         />
       </div>
     </div>

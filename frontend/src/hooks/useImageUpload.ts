@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useTranslate } from '@/components/I18nProvider';
+import type { Translate } from '@/lib/i18n';
 import type { UploadedImage } from '@/types';
 
 export const ACCEPTED_TYPES = [
@@ -23,16 +25,19 @@ interface UseImageUpload {
   clear: () => void;
 }
 
-function describeFileError(file: File): string | null {
+function describeFileError(file: File, t: Translate): string | null {
   const looksLikeImage = file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp|tiff?)$/i.test(file.name);
   if (!looksLikeImage) {
-    return `“${file.name}” is not an image. Use PNG, JPEG, GIF, WEBP, BMP or TIFF.`;
+    return t('dropzone.errorNotImage', { file: file.name });
   }
   if (file.size > MAX_FILE_BYTES) {
-    return `“${file.name}” is ${(file.size / (1024 * 1024)).toFixed(1)} MB - the limit is 15 MB.`;
+    return t('dropzone.errorTooLarge', {
+      file: file.name,
+      size: (file.size / (1024 * 1024)).toFixed(1),
+    });
   }
   if (file.size === 0) {
-    return `“${file.name}” is empty.`;
+    return t('dropzone.errorEmpty', { file: file.name });
   }
   return null;
 }
@@ -45,6 +50,7 @@ export function useImageUpload(): UseImageUpload {
   const [image, setImage] = useState<UploadedImage | null>(null);
   const [error, setError] = useState<string | null>(null);
   const objectUrl = useRef<string | null>(null);
+  const t = useTranslate();
 
   const releaseUrl = useCallback(() => {
     if (objectUrl.current) {
@@ -60,7 +66,7 @@ export function useImageUpload(): UseImageUpload {
     async (file: File | null | undefined) => {
       if (!file) return;
 
-      const fileError = describeFileError(file);
+      const fileError = describeFileError(file, t);
       if (fileError) {
         setError(fileError);
         return;
@@ -82,10 +88,10 @@ export function useImageUpload(): UseImageUpload {
         setError(null);
       } catch {
         URL.revokeObjectURL(url);
-        setError(`“${file.name}” could not be decoded as an image.`);
+        setError(t('dropzone.errorDecode', { file: file.name }));
       }
     },
-    [releaseUrl],
+    [releaseUrl, t],
   );
 
   const clear = useCallback(() => {

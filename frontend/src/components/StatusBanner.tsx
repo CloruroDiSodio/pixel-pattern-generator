@@ -2,6 +2,8 @@
 
 import type { ReactNode } from 'react';
 
+import { useTranslate } from '@/components/I18nProvider';
+
 interface StatusBannerProps {
   error?: string | null;
   loading?: boolean;
@@ -10,6 +12,8 @@ interface StatusBannerProps {
 
 /** Inline feedback area: spinner while working, red panel on failure. */
 export default function StatusBanner({ error, loading, children }: StatusBannerProps) {
+  const t = useTranslate();
+
   if (error) {
     return (
       <div
@@ -18,7 +22,7 @@ export default function StatusBanner({ error, loading, children }: StatusBannerP
       >
         <span aria-hidden="true">⚠️</span>
         <div>
-          <p className="font-medium">Something went wrong</p>
+          <p className="font-medium">{t('status.errorTitle')}</p>
           <p className="mt-0.5 text-rose/90">{error}</p>
         </div>
       </div>
@@ -35,7 +39,7 @@ export default function StatusBanner({ error, loading, children }: StatusBannerP
           aria-hidden="true"
           className="h-4 w-4 animate-spin rounded-full border-2 border-ink-500 border-t-accent-soft"
         />
-        Processing…
+        {t('status.processing')}
       </div>
     );
   }

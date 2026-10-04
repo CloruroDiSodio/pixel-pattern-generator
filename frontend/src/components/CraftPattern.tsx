@@ -2,6 +2,7 @@
 
 import { memo, useMemo, useState } from 'react';
 
+import { useI18n } from '@/components/I18nProvider';
 import { contrastText } from '@/lib/download';
 import type { PatternResult } from '@/types';
 
@@ -24,6 +25,7 @@ const MAX_RENDERED_CELLS = 12_000;
  */
 function CraftPattern({ pattern, loading }: CraftPatternProps) {
   const [activeSymbol, setActiveSymbol] = useState<string | null>(null);
+  const { t, intlLocale } = useI18n();
 
   const tooLarge = useMemo(
     () => (pattern ? pattern.width * pattern.height > MAX_RENDERED_CELLS : false),
@@ -33,7 +35,7 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
   if (!pattern) {
     return (
       <div className="panel flex min-h-[18rem] items-center justify-center p-8 text-sm text-slate-400">
-        {loading ? 'Building the pattern chart…' : 'The pattern chart appears once an image is processed.'}
+        {loading ? t('pattern.building') : t('pattern.empty')}
       </div>
     );
   }
@@ -42,13 +44,16 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2 text-xs text-slate-400">
         <span className="chip">
-          {pattern.width} × {pattern.height} stitches
+          {t('pattern.dimensions', {
+            width: pattern.width.toLocaleString(intlLocale),
+            height: pattern.height.toLocaleString(intlLocale),
+          })}
         </span>
-        <span className="chip">{pattern.totalStitches.toLocaleString()} total</span>
+        <span className="chip">
+          {t('pattern.total', { count: pattern.totalStitches.toLocaleString(intlLocale) })}
+        </span>
         {pattern.repeatX > 1 || pattern.repeatY > 1 ? (
-          <span className="chip">
-            repeated {pattern.repeatX} × {pattern.repeatY}
-          </span>
+          <span className="chip">{t('pattern.repeated', { x: pattern.repeatX, y: pattern.repeatY })}</span>
         ) : null}
       </div>
 
@@ -58,19 +63,21 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
           className="panel flex flex-col items-center gap-2 border-amber/40 bg-amber/5 p-8 text-center"
         >
           <p className="text-sm font-medium text-amber">
-            Chart too large to display ({pattern.width.toLocaleString()} ×{' '}
-            {pattern.height.toLocaleString()} cells)
+            {t('pattern.tooLargeTitle', {
+              width: pattern.width.toLocaleString(intlLocale),
+              height: pattern.height.toLocaleString(intlLocale),
+            })}
           </p>
           <p className="max-w-md text-sm text-slate-400">
-            Rendering {(pattern.width * pattern.height).toLocaleString()} cells would freeze the
-            browser. The full chart is still included in the CSV and Markdown exports below, and
-            works fine in a spreadsheet or chart viewer.
+            {t('pattern.tooLargeBody', {
+              count: (pattern.width * pattern.height).toLocaleString(intlLocale),
+            })}
           </p>
         </div>
       ) : (
         <div className="panel overflow-auto p-3">
           <table className="border-collapse font-mono text-[10px] leading-none">
-            <caption className="sr-only">{pattern.title} pattern chart</caption>
+            <caption className="sr-only">{t('pattern.caption', { title: pattern.title })}</caption>
             <thead>
               <tr>
                 <th scope="col" className="sticky left-0 top-0 z-20 bg-ink-900 p-1" />
@@ -115,7 +122,10 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
 
       <div>
         <h3 className="field-label">
-          Legend <span className="font-mono text-[11px] normal-case text-slate-400">{pattern.legend.length} threads</span>
+          {t('pattern.legend')}{' '}
+          <span className="font-mono text-[11px] normal-case text-slate-400">
+            {t('pattern.threads', { count: pattern.legend.length })}
+          </span>
         </h3>
         <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
           {pattern.legend.map((entry) => (

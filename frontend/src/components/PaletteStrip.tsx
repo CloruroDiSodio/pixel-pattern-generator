@@ -2,6 +2,7 @@
 
 import { memo, useState } from 'react';
 
+import { useTranslate } from '@/components/I18nProvider';
 import { contrastText } from '@/lib/download';
 import type { PaletteColor } from '@/types';
 
@@ -15,13 +16,17 @@ interface PaletteStripProps {
 /** The generated palette with per-colour usage percentages. */
 function PaletteStrip({ palette, symbols, totalCells, onSelect }: PaletteStripProps) {
   const [hovered, setHovered] = useState<number | null>(null);
+  const t = useTranslate();
 
   if (palette.length === 0) return null;
 
   return (
     <div>
       <h3 className="field-label">
-        Palette <span className="font-mono text-[11px] normal-case text-slate-400">{palette.length} colours</span>
+        {t('palette.title')}{' '}
+        <span className="font-mono text-[11px] normal-case text-slate-400">
+          {t('palette.colours', { count: palette.length })}
+        </span>
       </h3>
       <ul className="flex flex-wrap gap-2">
         {palette.map((color, index) => {
@@ -31,7 +36,12 @@ function PaletteStrip({ palette, symbols, totalCells, onSelect }: PaletteStripPr
             <li key={`${color.hex}-${index}`}>
               <button
                 type="button"
-                title={`${color.label} — ${color.hex} — ${color.count} cells (${percent.toFixed(1)}%)`}
+                title={t('palette.swatchTitle', {
+                  label: color.label,
+                  hex: color.hex,
+                  count: color.count,
+                  percent: percent.toFixed(1),
+                })}
                 onMouseEnter={() => setHovered(index)}
                 onMouseLeave={() => setHovered(null)}
                 onFocus={() => setHovered(index)}
@@ -56,11 +66,11 @@ function PaletteStrip({ palette, symbols, totalCells, onSelect }: PaletteStripPr
       {hovered !== null && palette[hovered] ? (
         <p className="mt-2 text-xs text-slate-400">
           <span className="font-medium text-white">{palette[hovered].label}</span> ·{' '}
-          <span className="font-mono">{palette[hovered].hex}</span> · {palette[hovered].count} cells
+          <span className="font-mono">{palette[hovered].hex}</span> · {t('palette.cells', { count: palette[hovered].count })}
         </p>
       ) : (
         <p className="mt-2 text-xs text-slate-400">
-          Click a swatch to copy its hex value.
+          {t('palette.hint')}
         </p>
       )}
     </div>

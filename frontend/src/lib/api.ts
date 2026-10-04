@@ -1,4 +1,8 @@
 import type {
+  TranslationKey,
+  TranslationParams,
+} from '@/lib/i18n';
+import type {
   ApiErrorPayload,
   ApiOptions,
   PalettesResponse,
@@ -19,18 +23,34 @@ export const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000'
 ).replace(/\/+$/, '');
 
-/** Error thrown for every non-2xx response so the UI can show `message`. */
+/**
+ * Error thrown for every non-2xx response so the UI can show a reason.
+ *
+ * When the failure was generated on the client (no network, or no `detail` in
+ * the response body) it carries a catalogue `key` so the sentence can be
+ * translated. A `detail` from FastAPI is already English prose and is used
+ * verbatim.
+ */
 export class ApiError extends Error {
   readonly status: number;
+  readonly key?: TranslationKey;
+  readonly params?: TranslationParams;
 
-  constructor(message: string, status: number) {
+  constructor(
+    message: string,
+    status: number,
+    key?: TranslationKey,
+    params?: TranslationParams,
+  ) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
+    this.key = key;
+    this.params = params;
   }
 }
 
-function describe(payload: unknown, fallback: string): string {
+function describe(payload: unknown): string {
   if (typeof payload === 'string' && payload.length > 0) {
     return payload;
   }
@@ -45,7 +65,7 @@ function describe(payload: unknown, fallback: string): string {
       }
     }
   }
-  return fallback;
+  return '';
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -56,10 +76,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (error instanceof DOMException && error.name === 'AbortError') {
       throw error;
     }
-    throw new ApiError(
-      `Could not reach the API at ${API_BASE_URL}. Is the backend running?`,
-      0,
-    );
+    throw new ApiError('', 0, 'status.apiUnreachable', { url: API_BASE_URL });
   }
 
   if (!response.ok) {
@@ -69,7 +86,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       payload = null;
     }
-    throw new ApiError(describe(payload, `Request failed (${response.status})`), response.status);
+    const detail = describe(payload);
+    // No usable `detail`: fall back to a localised "request failed (status)".
+    throw new ApiError(
+      detail,
+      response.status,
+      detail ? undefined : 'status.requestFailed',
+      { status: response.status },
+    );
   }
 
   return (await response.json()) as T;

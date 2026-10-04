@@ -1,19 +1,24 @@
 'use client';
 
+import LocaleSwitcher from '@/components/LocaleSwitcher';
+import { useI18n } from '@/components/I18nProvider';
+
 interface HeaderProps {
   /** Result of the periodic `/api/health` probe. */
   backendOnline: boolean | null;
   apiUrl: string;
 }
 
-/** Top bar: title, tagline and a live backend connection indicator. */
+/** Top bar: title, tagline, language picker and a live backend indicator. */
 export default function Header({ backendOnline, apiUrl }: HeaderProps) {
+  const { t } = useI18n();
+
   const state =
     backendOnline === null
-      ? { dot: 'bg-slate-500', text: 'Checking API…' }
+      ? { dot: 'bg-slate-500', text: t('header.apiChecking') }
       : backendOnline
-        ? { dot: 'bg-mint', text: 'API online' }
-        : { dot: 'bg-rose', text: 'API offline' };
+        ? { dot: 'bg-mint', text: t('header.apiOnline') }
+        : { dot: 'bg-rose', text: t('header.apiOffline') };
 
   return (
     <header className="flex flex-col gap-4 py-8 sm:flex-row sm:items-center sm:justify-between">
@@ -45,15 +50,14 @@ export default function Header({ backendOnline, apiUrl }: HeaderProps) {
         </div>
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
-            Pixel Art &amp; Pattern Generator
+            {t('header.title')}
           </h1>
-          <p className="text-sm text-slate-400">
-            Pixelate a photo, quantize it to a retro palette, export a stitchable chart.
-          </p>
+          <p className="text-sm text-slate-400">{t('header.tagline')}</p>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
+        <LocaleSwitcher />
         <span
           className="chip"
           title={`Backend: ${apiUrl}`}
@@ -69,7 +73,7 @@ export default function Header({ backendOnline, apiUrl }: HeaderProps) {
           target="_blank"
           rel="noreferrer noopener"
         >
-          API docs
+          {t('header.apiDocs')}
         </a>
       </div>
     </header>

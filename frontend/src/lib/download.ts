@@ -1,5 +1,6 @@
 /** Client-side helpers for exporting the generated grid and pattern. */
 
+import { LocalizedError } from '@/lib/i18n';
 import type { PaletteColor } from '@/types';
 
 /** Turn an arbitrary project name into a safe, lowercase file name. */
@@ -59,7 +60,7 @@ export async function renderGridToPng({
   const height = grid.length;
   const width = height > 0 ? grid[0].length : 0;
   if (width === 0 || height === 0) {
-    throw new Error('Nothing to export: the grid is empty.');
+    throw new LocalizedError('export.emptyGrid');
   }
 
   const canvas = document.createElement('canvas');
@@ -67,7 +68,7 @@ export async function renderGridToPng({
   canvas.height = height * scale;
   const context = canvas.getContext('2d');
   if (!context) {
-    throw new Error('Canvas is not available in this browser.');
+    throw new LocalizedError('export.noCanvas');
   }
 
   context.imageSmoothingEnabled = false;
@@ -110,7 +111,7 @@ export async function renderGridToPng({
   return new Promise<Blob>((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-      else reject(new Error('Could not encode the PNG.'));
+      else reject(new LocalizedError('export.encodeFailed'));
     }, 'image/png');
   });
 }

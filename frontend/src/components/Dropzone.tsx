@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 
+import { useTranslate } from '@/components/I18nProvider';
 import { formatBytes } from '@/lib/download';
 import { ACCEPTED_TYPES, MAX_FILE_BYTES } from '@/hooks/useImageUpload';
 import type { UploadedImage } from '@/types';
@@ -18,6 +19,7 @@ interface DropzoneProps {
  * selection.  The whole thing is keyboard accessible via the hidden input.
  */
 export default function Dropzone({ image, error, onFile, onClear }: DropzoneProps) {
+  const t = useTranslate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
 
@@ -70,7 +72,7 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={image.url}
-              alt={`Selected source: ${image.name}`}
+              alt={t('dropzone.alt', { name: image.name })}
               className="max-h-32 rounded-lg border border-ink-600 object-contain"
             />
             <div className="text-sm text-slate-300">
@@ -91,7 +93,7 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
                 }
               }}
             >
-              Replace image
+              {t('dropzone.replace')}
             </label>
           </>
         ) : (
@@ -100,11 +102,9 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
               🖼️
             </div>
             <div>
-              <p className="text-sm font-medium text-white">
-                Drop an image here, paste it, or click to browse
-              </p>
+              <p className="text-sm font-medium text-white">{t('dropzone.prompt')}</p>
               <p className="mt-1 text-xs text-slate-400">
-                PNG, JPEG, GIF, WEBP, BMP or TIFF · up to {MAX_FILE_BYTES / (1024 * 1024)} MB
+                {t('dropzone.formats', { size: MAX_FILE_BYTES / (1024 * 1024) })}
               </p>
             </div>
             <label
@@ -118,7 +118,7 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
                 }
               }}
             >
-              Choose a file
+              {t('dropzone.choose')}
             </label>
           </>
         )}
@@ -145,7 +145,7 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
 
       {image ? (
         <button type="button" className="btn btn-ghost w-full" onClick={onClear}>
-          Remove image
+          {t('dropzone.remove')}
         </button>
       ) : null}
     </div>

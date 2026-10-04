@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import { useI18n, useTranslate } from '@/components/I18nProvider';
 import CraftPattern from '@/components/CraftPattern';
 import DownloadMenu from '@/components/DownloadMenu';
 import Dropzone from '@/components/Dropzone';
@@ -17,6 +18,7 @@ import type { TransformPipeline } from '@/hooks/useTransformPipeline';
 import { API_BASE_URL, fetchApiOptions, fetchHealth, fetchPalettes } from '@/lib/api';
 import { DEFAULT_SETTINGS, FALLBACK_LIMITS } from '@/lib/settings';
 import { MAX_ZOOM, MIN_ZOOM } from '@/lib/zoom';
+import { APP_VERSION } from '@/lib/version';
 import type {
   ApiOptions,
   PaletteColor,
@@ -42,6 +44,7 @@ export default function StudioPage() {
   const [palettes, setPalettes] = useState<PalettesResponse['palettes']>([]);
   const [options, setOptions] = useState<ApiOptions | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const { t } = useI18n();
 
   const { transform, pattern, status, error, isRefreshing, reload } = useTransformPipeline(
     image,
@@ -100,11 +103,11 @@ export default function StudioPage() {
   const copyToClipboard = useCallback(async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
-      setToast(`Copied ${value}`);
+      setToast(t('toast.copied', { value }));
     } catch {
-      setToast('Clipboard is not available in this browser.');
+      setToast(t('toast.clipboardUnavailable'));
     }
-  }, []);
+  }, [t]);
 
   /* Stable callbacks: an inline arrow here would defeat PixelCanvas's memo. */
   const pickColor = useCallback(
@@ -131,7 +134,9 @@ export default function StudioPage() {
         {/* ---------------- Sidebar ---------------- */}
         <aside className="space-y-5">
           <section className="panel p-5">
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-300">Source</h2>
+            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-slate-300">
+              {t('sidebar.source')}
+            </h2>
             <Dropzone image={image} error={uploadError} onFile={acceptFile} onClear={clear} />
           </section>
 
@@ -153,10 +158,8 @@ export default function StudioPage() {
 
           {!image ? (
             <div className="panel flex min-h-[24rem] flex-col items-center justify-center gap-2 p-10 text-center">
-              <p className="text-lg font-medium text-white">Drop an image to begin</p>
-              <p className="max-w-md text-sm text-slate-400">
-                Everything runs on your own machine and our FastAPI backend — the image is never stored.
-              </p>
+              <p className="text-lg font-medium text-white">{t('empty.title')}</p>
+              <p className="max-w-md text-sm text-slate-400">{t('empty.body')}</p>
             </div>
           ) : (
             <>
@@ -172,16 +175,18 @@ export default function StudioPage() {
                         view === mode ? 'bg-accent text-white' : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      {mode === 'pixels' ? 'Pixel art' : 'Craft pattern'}
+                      {mode === 'pixels' ? t('tab.pixels') : t('tab.pattern')}
                     </button>
                   ))}
                 </div>
 
                 <div className="flex items-center gap-2 text-xs text-slate-400">
-                  {isRefreshing ? <span className="chip">Updating…</span> : null}
-                  {transform ? <span className="chip">{transform.processingMs} ms on the server</span> : null}
+                  {isRefreshing ? <span className="chip">{t('toolbar.updating')}</span> : null}
+                  {transform ? (
+                    <span className="chip">{t('toolbar.serverMs', { ms: transform.processingMs })}</span>
+                  ) : null}
                   <button type="button" className="btn btn-ghost px-2 py-1" onClick={reload}>
-                    ↻ Re-run
+                    {t('toolbar.rerun')}
                   </button>
                 </div>
               </div>
@@ -192,7 +197,7 @@ export default function StudioPage() {
                     <>
                       <div className="flex flex-wrap items-center gap-3">
                         <label className="flex items-center gap-2 text-xs text-slate-400">
-                          Zoom
+                          {t('canvas.zoom')}
                           <input
                             type="range"
                             min={MIN_ZOOM}
@@ -209,9 +214,9 @@ export default function StudioPage() {
                           className="btn btn-ghost px-2 py-1"
                           onClick={() => setZoom(fitZoomValue)}
                           disabled={zoom <= fitZoomValue}
-                          title="Shrink the canvas until the whole grid is visible"
+                          title={t('canvas.fitTitle')}
                         >
-                          ⤢ Fit
+                          {t('canvas.fit')}
                         </button>
                       </div>
 
@@ -255,9 +260,12 @@ export default function StudioPage() {
         </section>
       </main>
 
-      <footer className="mt-10 border-t border-ink-800 pt-6 text-xs text-slate-400">
-        Pixel art conversion runs server-side with Pillow · patterns are generated by the FastAPI API at{' '}
-        <code className="font-mono text-slate-400">{API_BASE_URL}</code>
+      <footer className="mt-10 flex flex-col gap-2 border-t border-ink-800 pt-6 text-xs text-slate-400 sm:flex-row sm:items-center sm:justify-between">
+        <p>
+          {t('footer.lead')}{' '}
+          <code className="font-mono text-slate-400">{API_BASE_URL}</code>
+        </p>
+        <p className="font-mono text-slate-500">{t('header.version', { version: APP_VERSION })}</p>
       </footer>
 
       {toast ? (
@@ -288,14 +296,18 @@ function PatternView({
   transform,
   busy,
 }: PatternViewProps) {
+  const t = useTranslate();
+  const { intlLocale } = useI18n();
   return (
     <div className="space-y-5">
       <section className="panel space-y-4 p-5">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">Pattern details</h2>
+        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+          {t('pattern.details')}
+        </h2>
         <div className="grid gap-4 sm:grid-cols-3">
           <div className="sm:col-span-3">
             <label className="field-label" htmlFor="pattern-title">
-              Title
+              {t('pattern.title')}
             </label>
             <input
               id="pattern-title"
@@ -307,20 +319,22 @@ function PatternView({
           </div>
           <RepeatInput
             id="repeat-x"
-            label="Repeat across"
+            label={t('pattern.repeatX')}
             value={patternOptions.repeatX}
             onChange={(repeatX) => setPatternOptions({ ...patternOptions, repeatX })}
           />
           <RepeatInput
             id="repeat-y"
-            label="Repeat down"
+            label={t('pattern.repeatY')}
             value={patternOptions.repeatY}
             onChange={(repeatY) => setPatternOptions({ ...patternOptions, repeatY })}
           />
           <p className="self-end text-xs text-slate-400">
             {pattern
-              ? `${pattern.totalStitches.toLocaleString()} stitches in total`
-              : 'Repeats multiply the stitch count.'}
+              ? t('pattern.stitchesTotal', {
+                  count: pattern.totalStitches.toLocaleString(intlLocale),
+                })
+              : t('pattern.repeatsNote')}
           </p>
         </div>
       </section>
