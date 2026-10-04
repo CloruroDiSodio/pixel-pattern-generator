@@ -166,3 +166,43 @@ class TestGridHelpers:
         ]
         assert sum(percentages) == pytest.approx(100.0, abs=0.05)
 
+
+class TestThreadColumns:
+    """The thread block is opt-in: without it the exports must not change."""
+
+    THREADS = {
+        "brand": "DMC",
+        "fabricCount": 14,
+        "stitchesPerSkein": 4251,
+        "rows": [
+            {"brand": "DMC", "code": "310", "name": "Black", "hex": "#000000", "skeins": 2},
+            {"brand": "DMC", "code": "B5200", "name": "Snow White", "hex": "#FFFFFF", "skeins": 1},
+            {"brand": "DMC", "code": "321", "name": "Red", "hex": "#C72B3B", "skeins": 1},
+        ],
+    }
+
+    def test_csv_gains_the_thread_columns(self) -> None:
+        csv_text = grid_to_csv(GRID, PALETTE, LABELS, SYMBOLS, threads=self.THREADS)
+        assert "Thread brand,DMC" in csv_text
+        assert "14 ct fabric, 4251 stitches per skein" in csv_text
+        assert "Symbol,Colour,Hex,Stitches,Percent,Thread,Thread name,Skeins" in csv_text
+        assert "A,Black,#000000,4,44.44%,DMC 310,Black,2" in csv_text
+
+    def test_markdown_gains_the_thread_columns(self) -> None:
+        markdown = grid_to_markdown(GRID, PALETTE, LABELS, SYMBOLS, threads=self.THREADS)
+        assert "- **Thread brand:** DMC" in markdown
+        assert "- **Skein estimate:** 14 ct fabric, 4251 stitches per skein" in markdown
+        assert "| Symbol | Colour | Hex | Stitches | Percent | Thread | Thread name | Skeins |" in markdown
+        assert "| `A` | Black | `#000000` | 4 | 44.44% | DMC 310 | Black | 2 |" in markdown
+
+    def test_omitting_the_block_keeps_the_old_output(self) -> None:
+        assert "Thread" not in grid_to_csv(GRID, PALETTE, LABELS, SYMBOLS)
+        assert "Thread" not in grid_to_markdown(GRID, PALETTE, LABELS, SYMBOLS)
+
+    def test_repeats_are_counted_towards_the_skeins(self) -> None:
+        threads = {**self.THREADS, "rows": [{**row, "skeins": 0} for row in self.THREADS["rows"]]}
+        csv_text = grid_to_csv(GRID, PALETTE, LABELS, SYMBOLS, repeat_x=2, repeat_y=1, threads=threads)
+        # 4 cells x 2 repeats = 8 stitches out of 18, and the caller's skein
+        # counts are passed straight through - they are already multiplied.
+        assert "A,Black,#000000,8,44.44%,DMC 310,Black,0" in csv_text
+

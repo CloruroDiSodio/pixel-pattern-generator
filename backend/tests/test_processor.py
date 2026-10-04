@@ -389,3 +389,82 @@ class TestBuildPattern:
         assert pattern.total_stitches == transform.width * transform.height
         assert len(pattern.legend) == len(transform.palette)
 
+
+class TestThreadMatching:
+    """F2: the legend (and both exports) name a real thread and a skein count."""
+
+    def test_off_by_default(self) -> None:
+        result = build_pattern(GRID, PALETTE)
+        assert result.thread_brand == "none"
+        assert result.stitches_per_skein is None
+        assert all(entry["thread"] is None for entry in result.legend)
+        # No brand means the exports are byte-for-byte what they were.
+        assert "Thread" not in result.csv
+        assert "Thread brand" not in result.markdown
+
+    def test_legend_carries_the_thread_and_the_skeins(self) -> None:
+        result = build_pattern(GRID, PALETTE, thread_brand="dmc")
+        assert result.thread_brand == "dmc"
+        assert result.stitches_per_skein and result.stitches_per_skein > 0
+        black = result.legend[0]["thread"]
+        assert black is not None
+        assert black["code"] == "310"
+        assert black["brand"] == "DMC"
+        assert black["skeins"] == 1
+
+    def test_the_exports_carry_the_same_thread(self) -> None:
+        result = build_pattern(GRID, PALETTE, thread_brand="dmc")
+        assert "Thread brand,DMC" in result.csv
+        assert "DMC 310,Black,1" in result.csv
+        assert "**Thread brand:** DMC" in result.markdown
+        assert "| `A` | Black | `#000000` | 4 | 44.44% | DMC 310 | Black | 1 |" in result.markdown
+
+    def test_an_unused_colour_is_still_matched_but_needs_nothing(self) -> None:
+        palette = PALETTE + [PaletteColor(hex="#123456", count=0, label="Unused")]
+        result = build_pattern(GRID, palette, ["A", "B", "C", "D"], thread_brand="dmc")
+        unused = result.legend[-1]
+        assert unused["count"] == 0
+        assert unused["thread"]["skeins"] == 0  # type: ignore[index]
+
+    def test_repeats_feed_the_skein_estimate(self) -> None:
+        once = build_pattern(GRID, PALETTE, thread_brand="dmc")
+        thrice = build_pattern(GRID, PALETTE, repeat_x=3, repeat_y=3, thread_brand="dmc")
+        assert thrice.legend[0]["thread"]["skeins"] >= once.legend[0]["thread"]["skeins"]  # type: ignore[index]
+
+    def test_an_unknown_brand_raises_a_processing_error(self) -> None:
+        # ThreadError is translated at the processor boundary so the API only
+        # ever has one failure type to turn into a 400.
+        with pytest.raises(ProcessingError, match="unknown thread brand"):
+            build_pattern(GRID, PALETTE, thread_brand="anchor")
+
+    @pytest.mark.parametrize("fabric_count", [0, 5, 41])
+    def test_the_fabric_count_is_range_checked(self, fabric_count: int) -> None:
+        with pytest.raises(ProcessingError, match="fabric_count"):
+            build_pattern(GRID, PALETTE, fabric_count=fabric_count)
+
+    def test_a_coarser_fabric_covers_more_stitches_per_skein(self) -> None:
+        fine = build_pattern(GRID, PALETTE, thread_brand="dmc", fabric_count=11)
+        coarse = build_pattern(GRID, PALETTE, thread_brand="dmc", fabric_count=28)
+        assert coarse.stitches_per_skein > fine.stitches_per_skein  # type: ignore[operator]
+
+    def test_the_dmc_preset_snaps_the_grid_to_the_thread_table(self) -> None:
+        result = transform_image(
+            encode(gradient_image(64, 64)),
+            TransformOptions(grid_width=16, palette="dmc", max_colors=8),
+        )
+        allowed = {color[0] for color in BUILT_IN_PALETTES["dmc"]["colors"]}  # type: ignore[index]
+        assert {color.hex for color in result.palette} <= allowed
+        # The labels are the codes, so a DMC-snapshotted chart already reads well.
+        assert all(color.label[0].isdigit() for color in result.palette)
+
+    def test_end_to_end_dmc_palette_and_matching_agree(self, png_bytes: bytes) -> None:
+        transform = transform_image(
+            png_bytes, TransformOptions(grid_width=16, palette="dmc", max_colors=6)
+        )
+        pattern = build_pattern(
+            transform.grid, transform.palette, transform.symbols, thread_brand="dmc"
+        )
+        # Snapping to DMC first means the matched thread is that exact shade.
+        for entry, color in zip(pattern.legend, transform.palette):
+            assert entry["thread"]["hex"] == color.hex  # type: ignore[index]
+

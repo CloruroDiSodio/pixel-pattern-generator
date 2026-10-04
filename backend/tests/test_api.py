@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import math
 
 import pytest
 from fastapi.testclient import TestClient
@@ -338,7 +339,102 @@ class TestPatternEndpoint:
             "symbol": "A",
             "count": 4,
             "percent": 44.44,
+            # Explicitly null rather than absent: the UI distinguishes "no brand
+            # matched" from "matched, and you need no skein".
+            "thread": None,
         }
+
+    def test_thread_brand_is_off_by_default(self) -> None:
+        body = self.post()
+        assert body["threadBrand"] == "none"
+        assert body["stitchesPerSkein"] is None
+        assert "Thread" not in body["csv"]
+        assert "**Thread brand:**" not in body["markdown"]
+
+    def test_thread_brand_fills_the_legend(self) -> None:
+        body = self.post(threadBrand="dmc")
+        assert body["threadBrand"] == "dmc"
+        assert body["fabricCount"] == 14
+        assert body["stitchesPerSkein"] > 0
+
+        black = body["legend"][0]["thread"]
+        assert black == {
+            "brand": "DMC",
+            "code": "310",
+            "name": "Black",
+            "hex": "#000000",
+            "skeins": 1,  # 4 stitches is far below one skein
+        }
+        assert all(entry["thread"] for entry in body["legend"])
+
+    def test_thread_columns_reach_both_exports(self) -> None:
+        body = self.post(threadBrand="dmc")
+        assert "Thread brand,DMC" in body["csv"]
+        assert "Symbol,Colour,Hex,Stitches,Percent,Thread,Thread name,Skeins" in body["csv"]
+        assert "DMC 310,Black,1" in body["csv"]
+        assert "- **Thread brand:** DMC" in body["markdown"]
+        assert "| Thread | Thread name | Skeins |" in body["markdown"]
+        assert "DMC 310 | Black | 1 |" in body["markdown"]
+
+    def test_unused_colour_needs_no_skein(self) -> None:
+        # The palette keeps a colour that was painted away completely; it must not
+        # tell anybody to buy a skein for it.
+        body = self.post(grid=[[0, 1, 1], [0, 0, 1], [0, 0, 0]], threadBrand="dmc")
+        entry = next(item for item in body["legend"] if item["index"] == 2)
+        assert entry["count"] == 0
+        assert entry["thread"]["skeins"] == 0
+
+    def test_skeins_are_the_stitch_count_divided_by_the_skein_yield(self) -> None:
+        body = self.post(threadBrand="dmc")
+        per_skein = body["stitchesPerSkein"]
+        for entry in body["legend"]:
+            assert entry["thread"]["skeins"] == math.ceil(entry["count"] / per_skein)
+
+    def test_repeats_are_counted_towards_the_skeins(self) -> None:
+        single = self.post(grid=[[0]], palette=[{"hex": "#000000", "count": 1, "label": "Black"}], threadBrand="dmc")
+        # 64 x 64 stitches of one colour is 4096 stitches - just under one skein on
+        # 14 count. Repeated 4 x 4 that is 16x the thread, so 16 skeins.
+        grid = [[0] * 64 for _ in range(64)]
+        palette = [{"hex": "#000000", "count": 4096, "label": "Black"}]
+        plain = self.post(grid=grid, palette=palette, threadBrand="dmc")
+        repeated = self.post(grid=grid, palette=palette, threadBrand="dmc", repeatX=4, repeatY=4)
+        assert single["legend"][0]["thread"]["skeins"] == 1
+        assert plain["legend"][0]["count"] == 4096
+        assert plain["legend"][0]["thread"]["skeins"] == 1
+        assert repeated["legend"][0]["count"] == 4096 * 16
+        assert repeated["legend"][0]["thread"]["skeins"] == 16
+
+    def test_fabric_count_changes_the_estimate(self) -> None:
+        fine = self.post(threadBrand="dmc")["stitchesPerSkein"]
+        coarse = self.post(threadBrand="dmc", fabricCount=28)["stitchesPerSkein"]
+        # The same skein covers roughly twice as many stitches on 28 count.
+        assert 1.9 < coarse / fine < 2.1
+
+    def test_unknown_thread_brand_returns_400(self) -> None:
+        response = client.post("/api/pattern", json={**self.PAYLOAD, "threadBrand": "unicorn"})
+        assert response.status_code == 400
+        assert "unknown thread brand" in response.json()["detail"]
+
+    @pytest.mark.parametrize("fabric_count", [5, 41])
+    def test_fabric_count_bounds_are_enforced(self, fabric_count: int) -> None:
+        response = client.post(
+            "/api/pattern", json={**self.PAYLOAD, "fabricCount": fabric_count}
+        )
+        assert response.status_code == 422
+
+    def test_brand_list_is_published_in_the_options(self) -> None:
+        body = client.get("/api/options").json()
+        dmc = next(brand for brand in body["threadBrands"] if brand["id"] == "dmc")
+        assert dmc["name"] == "DMC"
+        assert dmc["colors"] > 100
+
+    def test_dmc_palette_preset_is_offered(self) -> None:
+        body = client.get("/api/palettes").json()
+        dmc = next(palette for palette in body["palettes"] if palette["id"] == "dmc")
+        labels = [color["label"] for color in dmc["colors"]]
+        # Every label is "<code> <name>", so the picker and the legend agree.
+        assert "310 Black" in labels
+        assert all(label.split(" ", 1)[1] for label in labels)
 
     def test_repeats_in_camel_case(self) -> None:
         body = self.post(repeatX=4, repeatY=2)
