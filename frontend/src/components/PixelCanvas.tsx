@@ -109,20 +109,28 @@ function PixelCanvas({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-400">
-        <span className="font-mono">
+      {/* The hint and the chip have different natural heights, and a long hint can
+          wrap. Either would resize this row and nudge the canvas below it, so the
+          row gets a fixed height and both children are kept on a single line. */}
+      <div className="flex min-h-7 items-center justify-between gap-3 text-xs text-slate-400">
+        <span className="shrink-0 font-mono">
           {width} × {height} cells
         </span>
         {hover && hoveredColor ? (
-          <span className="chip">
+          <span className="chip min-w-0 truncate">
             <span
-              className="mr-2 inline-block h-3 w-3 rounded-sm border border-ink-600"
+              className="mr-2 inline-block h-3 w-3 shrink-0 rounded-sm border border-ink-600"
               style={{ backgroundColor: hoveredColor.hex }}
             />
             {hoveredColor.label} · {hoveredColor.hex} · ({hover.x + 1}, {hover.y + 1})
           </span>
         ) : (
-          <span>Hover to inspect a cell · click to copy its hex value</span>
+          <span
+            className="min-w-0 truncate"
+            title="Hover to inspect a cell · click to copy its hex value"
+          >
+            Hover to inspect a cell · click to copy its hex value
+          </span>
         )}
       </div>
 
