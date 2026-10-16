@@ -20,7 +20,9 @@ from typing import Annotated, Any, Deque, Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from . import __version__
@@ -157,6 +159,10 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Grids, CSV and Markdown are highly repetitive JSON: a 200x200 transform shrinks
+# by roughly 90 % on the wire, which matters on the free-tier hosts this targets.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
 
 
 @app.middleware("http")
@@ -421,9 +427,14 @@ async def transform(
         preview=preview,
     )
 
-    data = await file.read()
+    # One byte past the limit is enough for the processor to reject it - there is
+    # no reason to pull an arbitrarily large upload into memory first.
+    data = await file.read(MAX_IMAGE_BYTES + 1)
     try:
-        result = transform_image(data, request_options)
+        # Decoding, quantizing and dithering are CPU-bound; run them off the
+        # event loop so one slow image does not stall every other request
+        # (including the health probe the frontend polls).
+        result = await run_in_threadpool(transform_image, data, request_options)
     except ProcessingError as error:
         logger.warning(
             "rejected transform request from %s: %s", _client_ip(request), error
