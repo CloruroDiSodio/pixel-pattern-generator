@@ -20,7 +20,7 @@ backend/
 │   ├── test_processor.py   # 91 tests — pipeline, dithering, palettes, patterns
 │   ├── test_api.py         # 68 tests — every route, status codes, CORS, hardening
 │   ├── test_threads.py     # 159 tests — the DMC table, matching, skein maths
-│   └── test_lockfile.py    #   8 tests — lock file stays deployable
+│   └── test_lockfile.py    #  10 tests — lock file stays deployable
 ├── pytest.ini
 ├── requirements.txt     # runtime deps
 └── requirements-dev.txt # + pytest, pytest-cov, httpx
@@ -40,7 +40,7 @@ source .venv/bin/activate
 pip install -r requirements-dev.txt
 ```
 
-Requires **Python 3.9+**.
+Requires **Python 3.10+** (3.12 recommended — it is what `requirements.lock` targets).
 
 ## Run
 
@@ -182,18 +182,16 @@ data is decoded — see the root [Security section](../README.md#security).
 
 ## Locked installs
 
-`requirements.lock` is generated with `pip-compile --generate-hashes`, but
-`pip-compile` resolves for the interpreter it runs under. Because Pillow is pinned
-with environment markers, the lock needs a branch per supported Python version or a
-matching host silently skips it (`ModuleNotFoundError: No module named 'PIL'`).
-
-`tests/test_lockfile.py` guards this invariant. `backend/tools/` holds the helpers
-used to add and verify the extra branch:
+`requirements.lock` is generated with `pip-compile --generate-hashes` on **Python
+3.12**, the Render deploy interpreter. `pip-compile` resolves for the interpreter
+it runs under, so regenerate it on 3.12 after any change to `requirements*.txt`:
 
 ```bash
-python tools/add_pillow_branch.py     # insert the Pillow >= 3.10 hashes
-python tools/verify_pillow_branch.py # check a downloaded wheel is hash-pinned
+pip-compile --generate-hashes --output-file=requirements.lock requirements-dev.txt
 ```
+
+`tests/test_lockfile.py` fails the build if the lock drifts from
+`requirements.txt`, carries `python_version` branches, or pins an unpatched Pillow.
 
 ## Deploying to Render
 

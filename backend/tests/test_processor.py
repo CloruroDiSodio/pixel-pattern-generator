@@ -294,13 +294,13 @@ class TestDithering:
     def test_bayer_dither_perturbs_the_image(self) -> None:
         image = Image.new("RGB", (8, 8), (128, 128, 128))
         dithered = apply_bayer_dither(image.copy(), strength=64)
-        assert list(dithered.getdata()) != list(image.getdata())
-        assert any(pixel != (128, 128, 128) for pixel in dithered.getdata())
+        assert list(dithered.get_flattened_data()) != list(image.get_flattened_data())
+        assert any(pixel != (128, 128, 128) for pixel in dithered.get_flattened_data())
 
     def test_bayer_dither_keeps_channels_in_range(self) -> None:
         image = Image.new("RGB", (8, 8), (250, 5, 128))
         dithered = apply_bayer_dither(image, strength=255)
-        for red, green, blue in dithered.getdata():
+        for red, green, blue in dithered.get_flattened_data():
             assert 0 <= red <= 255 and 0 <= green <= 255 and 0 <= blue <= 255
 
     def test_dithering_changes_the_result_on_a_gradient(self) -> None:
@@ -552,9 +552,9 @@ class TestCrispResize:
         # it brown, crisp picks the majority side.
         image = Image.new("RGB", (60, 10), (255, 0, 0))
         image.paste((0, 255, 0), (33, 0, 60, 10))
-        crisp = set(_crisp_resize(image, 6, 1).getdata())
+        crisp = set(_crisp_resize(image, 6, 1).get_flattened_data())
         assert crisp <= {(255, 0, 0), (0, 255, 0)}
-        boxed = set(image.resize((6, 1), Image.Resampling.BOX).getdata())
+        boxed = set(image.resize((6, 1), Image.Resampling.BOX).get_flattened_data())
         assert boxed - {(255, 0, 0), (0, 255, 0)}
 
     def test_crisp_is_the_default_and_keeps_the_size(self, png_bytes: bytes) -> None:
@@ -584,9 +584,9 @@ class TestDitherStrength:
 
     def test_bayer_does_not_modify_the_source_image(self) -> None:
         image = gradient_image(16, 16)
-        before = list(image.getdata())
+        before = list(image.get_flattened_data())
         _map_grid(image, [(0, 0, 0), (255, 255, 255)], "bayer")
-        assert list(image.getdata()) == before
+        assert list(image.get_flattened_data()) == before
 
     @pytest.mark.parametrize("value", [-1, 101, "lots"])
     def test_strength_is_range_checked(self, value: object) -> None:

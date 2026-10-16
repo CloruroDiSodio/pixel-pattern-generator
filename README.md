@@ -235,7 +235,7 @@ Every user-visible change also gets a `CHANGELOG.md` entry, in
 
 | | Version | Notes |
 | --- | --- | --- |
-| Python | **3.10+** (3.9 works) | 3.10+ gets the patched Pillow; see [Security](#security) |
+| Python | **3.10+** | Pillow 12.x (CVE-2026-25990 fix), FastAPI and uvicorn require it |
 | Node.js | **18.17+** | `frontend/.nvmrc` pins 20.17.0 — `nvm use` picks it up |
 
 > **Run the two servers in two separate terminals.** Neither command returns to the
@@ -472,11 +472,6 @@ Netlify, or an nginx `limit_req` zone in front of the service).
   receive no further security fixes. The upgrade to 15.x/16.x is tracked as separate
   work; our static export uses no Server Functions, which is why the React Server
   Components advisories are not reachable in this topology.
-- **Python 3.9 cannot receive a patched Pillow.** The CVE-2026-25990 fix ships in
-  12.1.1 and every 12.x release requires Python ≥ 3.10, so `requirements.txt` pins
-  the patched Pillow on 3.10+ and the newest possible (11.3.0) on 3.9. On 3.9 the
-  format allowlist is what keeps the vulnerable decoder unreachable. **Use Python
-  3.10+ if you can** — CI tests both paths.
 
 ## Accessibility, SEO & performance
 
@@ -544,19 +539,13 @@ in.
 | Build command | `pip install --require-hashes -r requirements.lock` (see note) |
 | Start command | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
 | Health check path | `/api/health` |
-| Python version | **3.12** (or any ≥ 3.10, so the patched Pillow is used) |
+| Python version | **3.12** (the interpreter `requirements.lock` is compiled for) |
 
 > **`requirements.lock` and Python versions.** `pip-compile` resolves for the
-> interpreter it runs under, so the lock must carry a hash set for *every*
-> interpreter you deploy on. Pillow is pinned with environment markers
-> (`python_version < "3.10"` → 11.3.0, `>= "3.10"` → 12.1.1), and a lock generated
-> on 3.9 alone will silently skip Pillow on a 3.12 host — the build succeeds and
-> the process then dies with `ModuleNotFoundError: No module named 'PIL'`.
-> `tests/test_lockfile.py` fails the build if either branch goes missing.
->
-> To regenerate after a dependency change, run `pip-compile` under **each**
-> supported interpreter and merge the branches (see `backend/tools/`), or simply
-> use `pip install -r requirements.txt` on the deploy target.
+> interpreter it runs under, so the lock is compiled on **Python 3.12** — the same
+> version Render runs. If you change the deploy interpreter, regenerate it there:
+> `pip-compile --generate-hashes --output-file=requirements.lock requirements-dev.txt`.
+> `tests/test_lockfile.py` fails the build if the lock drifts from `requirements.txt`.
 
 Environment variables to set:
 

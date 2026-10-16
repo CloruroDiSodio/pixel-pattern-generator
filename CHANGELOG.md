@@ -45,6 +45,12 @@ The version lives in two places and must be bumped together:
 - **The health check pauses while the tab is hidden** and resumes as soon as it
   is visible again.
 
+- **The backend now requires Python 3.10+.** Pillow 12, FastAPI, uvicorn and
+  python-multipart have all dropped 3.9, so the 3.9 branch could no longer be
+  patched. Dependencies are updated to FastAPI 0.142, Starlette 1.8, uvicorn 0.54,
+  Pydantic 2.13, python-multipart 0.0.32, Pillow 12.3 and pytest 9, and
+  `requirements.lock` is now compiled for Python 3.12, the deploy target.
+
 ### Fixed
 
 - **Presets with a colour limit ignored the picture.** When a preset has more
