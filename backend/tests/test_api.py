@@ -360,6 +360,25 @@ class TestPatternEndpoint:
         assert response.status_code == 200, response.text
         return response.json()
 
+    def test_malformed_hex_is_rejected_not_a_server_error(self) -> None:
+        payload = {**self.PAYLOAD, "palette": [{"hex": "nothex"}], "grid": [[0]], "threadBrand": "dmc"}
+        assert client.post("/api/pattern", json=payload).status_code == 422
+
+    def test_oversized_grid_is_rejected(self) -> None:
+        wide = {**self.PAYLOAD, "grid": [[0] * 201]}
+        tall = {**self.PAYLOAD, "grid": [[0]] * 201}
+        assert client.post("/api/pattern", json=wide).status_code == 400
+        assert client.post("/api/pattern", json=tall).status_code == 422
+
+    @pytest.mark.parametrize("symbol", ["AB", "", " ", "`", "|", "\\"])
+    def test_unsafe_symbols_are_rejected(self, symbol: str) -> None:
+        payload = {**self.PAYLOAD, "symbols": [symbol, "B", "C"]}
+        assert client.post("/api/pattern", json=payload).status_code == 422
+
+    def test_overlong_label_is_rejected(self) -> None:
+        payload = {**self.PAYLOAD, "palette": [{"hex": "#000000", "label": "x" * 65}], "grid": [[0]]}
+        assert client.post("/api/pattern", json=payload).status_code == 422
+
     def test_chart_uses_symbols(self) -> None:
         body = self.post()
         assert body["grid"][0] == ["A", "B", "B"]

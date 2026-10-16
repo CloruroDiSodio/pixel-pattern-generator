@@ -21,7 +21,7 @@ from typing import Annotated, Any, Deque, Dict, List, Optional
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from . import __version__
 from .processor import (
@@ -42,7 +42,7 @@ from .processor import (
     transform_image,
 )
 from .threads import list_thread_brands
-from .utils import DEFAULT_SYMBOLS
+from .utils import DEFAULT_SYMBOLS, normalize_hex
 
 logger = logging.getLogger("app.security")
 
@@ -185,8 +185,20 @@ class PaletteColorModel(BaseModel):
     """A colour of the generated palette."""
 
     hex: str
-    count: int = 0
-    label: str = ""
+    count: int = Field(default=0, ge=0)
+    label: str = Field(default="", max_length=64)
+
+    @field_validator("hex")
+    @classmethod
+    def _valid_hex(cls, value: str) -> str:
+        # Rejected here (422) rather than deep inside thread matching, where an
+        # unparseable colour used to surface as a 500.
+        return normalize_hex(value)
+
+
+#: One printable character per chart cell.  Whitespace, backticks, pipes and
+#: backslashes would break the Markdown table the symbol is written into.
+ChartSymbol = Annotated[str, StringConstraints(min_length=1, max_length=1, pattern=r"^[^\s`|\\]$")]
 
 
 class TransformResponse(BaseModel):
@@ -236,9 +248,11 @@ class PatternRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     title: str = Field(default="Pixel pattern", max_length=120)
-    grid: List[List[int]] = Field(..., description="Matrix of palette indexes")
+    #: Bounded like a transform result: the chart, CSV and Markdown all grow with
+    #: the grid, so an unbounded one turns a small request into a huge response.
+    grid: List[List[int]] = Field(..., max_length=MAX_GRID_SIZE, description="Matrix of palette indexes")
     palette: List[PaletteColorModel] = Field(..., min_length=1, max_length=MAX_COLORS)
-    symbols: Optional[List[str]] = None
+    symbols: Optional[List[ChartSymbol]] = Field(default=None, max_length=MAX_COLORS)
     repeat_x: int = Field(default=1, alias="repeatX", ge=1, le=20)
     repeat_y: int = Field(default=1, alias="repeatY", ge=1, le=20)
     #: Match every palette colour onto a thread brand's table.  Optional: with no
