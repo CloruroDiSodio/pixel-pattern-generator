@@ -63,6 +63,7 @@ Keep this running in its own terminal — the Next.js front-end (`../frontend`, 
 | `ENABLE_DOCS` | `true` | Set `false` to remove `/docs`, `/redoc` and `/openapi.json`. |
 | `RATE_LIMIT_REQUESTS` | `20` | Transform requests allowed per window, per client. |
 | `RATE_LIMIT_WINDOW` | `60` | Rate limit window in seconds. |
+| `TRUSTED_PROXY_COUNT` | `1` | Proxies in front of the API that append to `X-Forwarded-For`. The client IP is read that many entries from the right; `0` ignores the header. |
 
 ## Test
 
@@ -171,6 +172,7 @@ colour labels stay stable.
 | Origin allowlist | `CORS_ORIGINS` | `http://localhost:3000` (localhost only — set it in production) |
 | API docs | `ENABLE_DOCS` | `true` (set `false` in production) |
 | Transform rate limit | `RATE_LIMIT_REQUESTS` / `RATE_LIMIT_WINDOW` | `20` requests / `60` s per client |
+| Client IP for the limit | `TRUSTED_PROXY_COUNT` | `1` (right-most `X-Forwarded-For` entry; spoofed left-hand entries are ignored) |
 
 Uploads are decoded from an allowlist of formats and rejected **before** any pixel
 data is decoded — see the root [Security section](../README.md#security).

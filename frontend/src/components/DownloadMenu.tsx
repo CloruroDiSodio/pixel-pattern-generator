@@ -115,7 +115,9 @@ function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps
         </button>
       </div>
 
-      {message ? <p className="text-xs text-slate-400">{message}</p> : null}
+      <p role="status" className="text-xs text-slate-400 empty:!mt-0">
+        {message}
+      </p>
     </div>
   );
 }

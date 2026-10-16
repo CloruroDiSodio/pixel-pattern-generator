@@ -20,8 +20,10 @@ from typing import Annotated, Any, Deque, Dict, List, Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field
+from starlette.concurrency import run_in_threadpool
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
 
 from . import __version__
 from .processor import (
@@ -42,7 +44,7 @@ from .processor import (
     transform_image,
 )
 from .threads import list_thread_brands
-from .utils import DEFAULT_SYMBOLS
+from .utils import DEFAULT_SYMBOLS, normalize_hex
 
 logger = logging.getLogger("app.security")
 
@@ -58,6 +60,15 @@ RATE_LIMIT_WINDOW = int(os.getenv("RATE_LIMIT_WINDOW", "60"))  # seconds
 #: ``/docs`` and ``/redoc`` are a needless information disclosure in production.
 DOCS_ENABLED = os.getenv("ENABLE_DOCS", "true").strip().lower() not in {"0", "false", "no"}
 
+#: Number of reverse proxies in front of the app that *append* to
+#: ``X-Forwarded-For`` (Render's load balancer is one).  The client address is
+#: read that many entries from the right; ``0`` ignores the header entirely.
+TRUSTED_PROXY_COUNT = max(0, int(os.getenv("TRUSTED_PROXY_COUNT", "1")))
+
+#: Above this many tracked clients, idle buckets are swept so a flood of
+#: distinct addresses cannot grow the table without bound.
+RATE_BUCKET_SWEEP_THRESHOLD = 10_000
+
 # client IP -> timestamps of recent requests (sliding window).
 _rate_buckets: Dict[str, Deque[float]] = defaultdict(deque)
 
@@ -65,14 +76,26 @@ _rate_buckets: Dict[str, Deque[float]] = defaultdict(deque)
 def _client_ip(request: Request) -> str:
     """Best-effort client identity for rate limiting and audit logs.
 
-    ``X-Forwarded-For`` is only consulted when the app runs behind a proxy that
-    sets it (Render, Netlify); the left-most entry is the original client.
+    ``X-Forwarded-For`` is read from the *right*: every entry left of the ones
+    our own proxies appended is whatever the client chose to send, so trusting
+    the left-most value would let anyone dodge the rate limit by rotating a
+    fake address per request.
     """
 
     forwarded = request.headers.get("x-forwarded-for")
-    if forwarded:
-        return forwarded.split(",")[0].strip()
+    if forwarded and TRUSTED_PROXY_COUNT:
+        hops = [part.strip() for part in forwarded.split(",") if part.strip()]
+        if len(hops) >= TRUSTED_PROXY_COUNT:
+            return hops[-TRUSTED_PROXY_COUNT]
     return request.client.host if request.client else "unknown"
+
+
+def _sweep_rate_buckets(now: float) -> None:
+    """Drop the buckets whose newest request has left the window."""
+
+    stale = [key for key, bucket in _rate_buckets.items() if not bucket or now - bucket[-1] > RATE_LIMIT_WINDOW]
+    for key in stale:
+        del _rate_buckets[key]
 
 
 def check_rate_limit(request: Request) -> Optional[int]:
@@ -84,6 +107,8 @@ def check_rate_limit(request: Request) -> Optional[int]:
     """
 
     now = time.monotonic()
+    if len(_rate_buckets) > RATE_BUCKET_SWEEP_THRESHOLD:
+        _sweep_rate_buckets(now)
     bucket = _rate_buckets[_client_ip(request)]
     while bucket and now - bucket[0] > RATE_LIMIT_WINDOW:
         bucket.popleft()
@@ -135,6 +160,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Grids, CSV and Markdown are highly repetitive JSON: a 200x200 transform shrinks
+# by roughly 90 % on the wire, which matters on the free-tier hosts this targets.
+app.add_middleware(GZipMiddleware, minimum_size=1024)
+
 
 @app.middleware("http")
 async def security_headers(request: Request, call_next: Any) -> Any:
@@ -162,8 +191,20 @@ class PaletteColorModel(BaseModel):
     """A colour of the generated palette."""
 
     hex: str
-    count: int = 0
-    label: str = ""
+    count: int = Field(default=0, ge=0)
+    label: str = Field(default="", max_length=64)
+
+    @field_validator("hex")
+    @classmethod
+    def _valid_hex(cls, value: str) -> str:
+        # Rejected here (422) rather than deep inside thread matching, where an
+        # unparseable colour used to surface as a 500.
+        return normalize_hex(value)
+
+
+#: One printable character per chart cell.  Whitespace, backticks, pipes and
+#: backslashes would break the Markdown table the symbol is written into.
+ChartSymbol = Annotated[str, StringConstraints(min_length=1, max_length=1, pattern=r"^[^\s`|\\]$")]
 
 
 class TransformResponse(BaseModel):
@@ -213,9 +254,11 @@ class PatternRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     title: str = Field(default="Pixel pattern", max_length=120)
-    grid: List[List[int]] = Field(..., description="Matrix of palette indexes")
+    #: Bounded like a transform result: the chart, CSV and Markdown all grow with
+    #: the grid, so an unbounded one turns a small request into a huge response.
+    grid: List[List[int]] = Field(..., max_length=MAX_GRID_SIZE, description="Matrix of palette indexes")
     palette: List[PaletteColorModel] = Field(..., min_length=1, max_length=MAX_COLORS)
-    symbols: Optional[List[str]] = None
+    symbols: Optional[List[ChartSymbol]] = Field(default=None, max_length=MAX_COLORS)
     repeat_x: int = Field(default=1, alias="repeatX", ge=1, le=20)
     repeat_y: int = Field(default=1, alias="repeatY", ge=1, le=20)
     #: Match every palette colour onto a thread brand's table.  Optional: with no
@@ -276,12 +319,15 @@ class PatternResponse(BaseModel):
 
 @app.get("/", tags=["meta"])
 def read_root() -> Dict[str, str]:
-    return {
+    banner = {
         "service": "Pixel Art & Pattern Generator API",
         "version": __version__,
-        "docs": "/docs",
         "health": "/api/health",
     }
+    # Only advertise the docs when they are actually served.
+    if DOCS_ENABLED:
+        banner["docs"] = "/docs"
+    return banner
 
 
 @app.get("/api/health", tags=["meta"])
@@ -384,9 +430,14 @@ async def transform(
         preview=preview,
     )
 
-    data = await file.read()
+    # One byte past the limit is enough for the processor to reject it - there is
+    # no reason to pull an arbitrarily large upload into memory first.
+    data = await file.read(MAX_IMAGE_BYTES + 1)
     try:
-        result = transform_image(data, request_options)
+        # Decoding, quantizing and dithering are CPU-bound; run them off the
+        # event loop so one slow image does not stall every other request
+        # (including the health probe the frontend polls).
+        result = await run_in_threadpool(transform_image, data, request_options)
     except ProcessingError as error:
         logger.warning(
             "rejected transform request from %s: %s", _client_ip(request), error

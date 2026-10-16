@@ -74,6 +74,7 @@ export default function Header({ backendOnline, apiUrl }: HeaderProps) {
           rel="noreferrer noopener"
         >
           {t('header.apiDocs')}
+          <span className="sr-only"> {t('common.opensInNewTab')}</span>
         </a>
       </div>
     </header>

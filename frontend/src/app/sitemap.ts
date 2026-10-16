@@ -1,8 +1,6 @@
 import type { MetadataRoute } from 'next';
 
-const SITE_URL = (
-  process.env.NEXT_PUBLIC_SITE_URL ?? 'https://turnipmedia-pixel-pattern-generator.netlify.app'
-).replace(/\/+$/, '');
+import { SITE_URL } from '@/lib/seo';
 
 /** Single-page app: one indexable route, refreshed weekly. */
 export default function sitemap(): MetadataRoute.Sitemap {

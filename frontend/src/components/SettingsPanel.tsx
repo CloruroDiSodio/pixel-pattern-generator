@@ -81,9 +81,9 @@ export default function SettingsPanel({
   ];
 
   return (
-    <section className="panel space-y-5 p-5" aria-label="Conversion settings">
+    <section className="panel space-y-5 p-5" aria-labelledby="settings-heading">
       <header className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-300">
+        <h2 id="settings-heading" className="text-sm font-semibold uppercase tracking-wider text-slate-300">
           {t('sidebar.settings')}
         </h2>
         <button type="button" className="btn btn-ghost px-2 py-1 text-xs" onClick={onReset} disabled={disabled}>

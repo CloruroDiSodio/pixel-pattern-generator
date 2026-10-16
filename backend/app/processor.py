@@ -811,6 +811,10 @@ def build_pattern(
     height = len(grid)
     if any(len(row) != width for row in grid):
         raise ProcessingError("every row of the pattern grid must have the same length")
+    if width > MAX_GRID_SIZE or height > MAX_GRID_SIZE:
+        raise ProcessingError(
+            f"the pattern grid is limited to {MAX_GRID_SIZE} x {MAX_GRID_SIZE} cells"
+        )
 
     for row in grid:
         for index in row:

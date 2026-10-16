@@ -139,14 +139,20 @@ export default function StudioPage() {
   useEffect(() => {
     let cancelled = false;
     const probe = async () => {
+      // No point waking a sleeping free-tier backend for a tab nobody is
+      // looking at; `visibilitychange` probes again as soon as it is.
+      if (document.visibilityState === 'hidden') return;
       const online = await fetchHealth();
       if (!cancelled) setBackendOnline(online);
     };
     void probe();
     const timer = window.setInterval(() => void probe(), 30_000);
+    const onVisible = () => void probe();
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
 
@@ -302,7 +308,7 @@ export default function StudioPage() {
                       onClick={() => setView(mode)}
                       aria-pressed={view === mode}
                       className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
-                        view === mode ? 'bg-accent text-white' : 'text-slate-400 hover:text-white'
+                        view === mode ? 'bg-accent-strong text-white' : 'text-slate-400 hover:text-white'
                       }`}
                     >
                       {mode === 'pixels' ? t('tab.pixels') : t('tab.pattern')}
@@ -335,7 +341,6 @@ export default function StudioPage() {
                             value={zoom}
                             onChange={(event) => setZoom(Number(event.target.value))}
                             className="w-32"
-                            aria-label="Preview zoom"
                           />
                           <span className="font-mono text-slate-300">{zoom}×</span>
                         </label>
@@ -412,17 +417,19 @@ export default function StudioPage() {
           {t('footer.lead')}{' '}
           <code className="font-mono text-slate-400">{API_BASE_URL}</code>
         </p>
-        <p className="font-mono text-slate-500">{t('header.version', { version: APP_VERSION })}</p>
+        <p className="font-mono text-slate-400">{t('header.version', { version: APP_VERSION })}</p>
       </footer>
 
-      {toast ? (
-        <div
-          role="status"
-          className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-ink-600 bg-ink-800 px-4 py-2 text-sm text-slate-200 shadow-panel"
-        >
-          {toast}
-        </div>
-      ) : null}
+      {/* The live region stays mounted: screen readers only reliably announce
+          content that changes *inside* an existing region, not a region that is
+          inserted together with its text. */}
+      <div role="status" aria-live="polite" aria-atomic="true">
+        {toast ? (
+          <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-full border border-ink-600 bg-ink-800 px-4 py-2 text-sm text-slate-200 shadow-panel">
+            {toast}
+          </div>
+        ) : null}
+      </div>
     </>
   );
 }

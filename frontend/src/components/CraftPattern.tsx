@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useMemo, useState } from 'react';
+import { memo, useCallback, useId, useMemo, useState } from 'react';
 
 import { useI18n } from '@/components/I18nProvider';
 import { contrastText } from '@/lib/download';
@@ -26,6 +26,18 @@ const MAX_RENDERED_CELLS = 12_000;
 function CraftPattern({ pattern, loading }: CraftPatternProps) {
   const [activeSymbol, setActiveSymbol] = useState<string | null>(null);
   const { t, intlLocale } = useI18n();
+  const chartId = useId();
+
+  /*
+   * Hover highlighting is a single generated CSS rule rather than a class on
+   * every matching <td>: toggling classes meant re-rendering the whole table -
+   * up to 12,000 cells - on every mouse move. The table itself is memoised and
+   * never re-renders on hover.
+   */
+  const highlightRule = activeSymbol
+    ? `[data-chart-id="${CSS.escape(chartId)}"] td[data-symbol="${CSS.escape(activeSymbol)}"]` +
+      '{background-color:rgb(124 92 255 / 0.3);color:#fff}'
+    : '';
 
   const tooLarge = useMemo(
     () => (pattern ? pattern.width * pattern.height > MAX_RENDERED_CELLS : false),
@@ -75,48 +87,13 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
           </p>
         </div>
       ) : (
-        <div className="panel overflow-auto p-3">
-          <table className="border-collapse font-mono text-[10px] leading-none">
-            <caption className="sr-only">{t('pattern.caption', { title: pattern.title })}</caption>
-            <thead>
-              <tr>
-                <th scope="col" className="sticky left-0 top-0 z-20 bg-ink-900 p-1" />
-                {pattern.columnLabels.map((label) => (
-                  <th
-                    key={label}
-                    scope="col"
-                    className="sticky top-0 z-10 bg-ink-900 px-0 py-1 font-normal text-slate-400"
-                  >
-                    {label}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {pattern.grid.map((row, y) => (
-                <tr key={y}>
-                  <th
-                    scope="row"
-                    className="sticky left-0 z-10 bg-ink-900 pr-2 text-right font-normal text-slate-400"
-                  >
-                    {pattern.rowLabels[y]}
-                  </th>
-                  {row.map((symbol, x) => (
-                    <td
-                      key={`${y}-${x}`}
-                      onMouseEnter={() => setActiveSymbol(symbol)}
-                      onMouseLeave={() => setActiveSymbol(null)}
-                      className={`h-5 w-5 border border-ink-800 text-center transition ${
-                        activeSymbol === symbol ? 'bg-accent/30 text-white' : 'text-slate-300'
-                      }`}
-                    >
-                      {symbol}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="panel overflow-auto p-3" data-chart-id={chartId}>
+          {highlightRule ? <style>{highlightRule}</style> : null}
+          <ChartTable
+            pattern={pattern}
+            caption={t('pattern.caption', { title: pattern.title })}
+            onHoverSymbol={setActiveSymbol}
+          />
         </div>
       )}
 
@@ -177,6 +154,68 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
     </div>
   );
 }
+
+interface ChartTableProps {
+  pattern: PatternResult;
+  caption: string;
+  onHoverSymbol: (symbol: string | null) => void;
+}
+
+/**
+ * The symbol grid. Hover is handled by delegation on the body - one listener
+ * instead of two per cell - and reported up as the symbol under the pointer.
+ */
+const ChartTable = memo(function ChartTable({ pattern, caption, onHoverSymbol }: ChartTableProps) {
+  const handleOver = useCallback(
+    (event: React.MouseEvent<HTMLTableSectionElement>) => {
+      const cell = (event.target as HTMLElement).closest('td');
+      onHoverSymbol(cell?.dataset.symbol ?? null);
+    },
+    [onHoverSymbol],
+  );
+  const handleLeave = useCallback(() => onHoverSymbol(null), [onHoverSymbol]);
+
+  return (
+    <table className="border-collapse font-mono text-[10px] leading-none">
+      <caption className="sr-only">{caption}</caption>
+      <thead>
+        <tr>
+          <th scope="col" className="sticky left-0 top-0 z-20 bg-ink-900 p-1" />
+          {pattern.columnLabels.map((label) => (
+            <th
+              key={label}
+              scope="col"
+              className="sticky top-0 z-10 bg-ink-900 px-0 py-1 font-normal text-slate-400"
+            >
+              {label}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody onMouseOver={handleOver} onMouseLeave={handleLeave}>
+        {pattern.grid.map((row, y) => (
+          <tr key={y}>
+            <th
+              scope="row"
+              className="sticky left-0 z-10 bg-ink-900 pr-2 text-right font-normal text-slate-400"
+            >
+              {pattern.rowLabels[y]}
+            </th>
+            {row.map((symbol, x) => (
+              <td
+                key={x}
+                data-symbol={symbol}
+                className="h-5 w-5 border border-ink-800 text-center text-slate-300"
+              >
+                {symbol}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+});
 
 // The chart can hold thousands of nodes and is re-rendered on every parent
 // state change (zoom, view toggle, toast) unless it is memoised.

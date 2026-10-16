@@ -8,6 +8,7 @@ import type { TranslationKey } from './en';
  */
 export const it: Record<TranslationKey, string> = {
   'skipToStudio': 'Vai allo studio',
+  'common.opensInNewTab': '(si apre in una nuova scheda)',
 
   /* --- header ----------------------------------------------------------- */
   'header.title': 'Generatore di Pixel Art e Schemi',
