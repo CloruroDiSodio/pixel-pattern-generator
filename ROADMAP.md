@@ -464,7 +464,7 @@ which is a real risk to the accessibility standard this project holds itself to.
 | **Dependency discipline** | Everything is exact-pinned, `requirements.lock` is hash-verified in CI, and Dependabot tracks pip/npm/actions (OWASP A08). Adding a runtime dependency is a deliberate decision, not a convenience — e.g. F11's `next-themes` suggestion should be weighed against doing it in ~15 lines of inline script. |
 | **Format allowlist is a security control** | `ALLOWED_FORMATS` (`processor.py:411`) exists to keep decoders with memory-safety bugs (e.g. CVE-2026-25990, PSD) unreachable. Do not add a format casually. |
 | **Python 3.10+ only** | Pillow 12.x, FastAPI and uvicorn dropped 3.9. `requirements.lock` is compiled on 3.12 (the Render target); `tests/test_lockfile.py` fails the build if it drifts from `requirements.txt`. |
-| **next@14 is unsupported** | Tracked as separate work; the static export is why the RSC advisories are unreachable in this topology. Do not add Server Functions. |
+| **No Server Functions** | The app is prerendered static content; keeping it free of Server Functions keeps the React Server Components attack surface out of this topology. |
 | **Performance budget** | The studio deliberately never requests the server-rendered PNG — it costs ~75 % of the payload and ~80 % of the CPU. Keep new features client-side where possible. |
 | **Memoisation** | `PixelCanvas`, `CraftPattern`, `PaletteStrip`, `DownloadMenu` are `memo`-wrapped; their callbacks must stay `useCallback`-stable or the memo is defeated (this has bitten the project before). |
 

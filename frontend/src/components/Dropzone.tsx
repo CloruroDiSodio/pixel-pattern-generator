@@ -69,7 +69,6 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
       >
         {image ? (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={image.url}
               alt={t('dropzone.alt', { name: image.name })}
