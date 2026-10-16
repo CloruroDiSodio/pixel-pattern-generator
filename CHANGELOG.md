@@ -48,8 +48,11 @@ The version lives in two places and must be bumped together:
   grid previously produced a ~40 MB response), malformed colours return 422
   instead of 500, and symbols and labels are length-limited.
 - **Uploads are read only up to the size limit** instead of in full.
-- **The frontend sends HSTS, a Content-Security-Policy and a
-  Permissions-Policy.**
+- **The frontend actually sends its security headers.** `X-Frame-Options` and
+  `Referrer-Policy` were configured in `netlify.toml` but never reached the
+  pages, because Netlify's Next.js runtime ignores those rules. They now come
+  from `next.config.mjs`, together with a new Content-Security-Policy,
+  Permissions-Policy and HSTS.
 - The API banner only links `/docs` when the docs are enabled.
 
 ## [1.3.0] - 2026-10-04
