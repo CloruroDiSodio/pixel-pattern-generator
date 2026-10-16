@@ -159,6 +159,42 @@ class TestSecurityHardening:
         )
         main_module._rate_buckets.clear()
 
+    def test_rate_limit_ignores_spoofed_forwarded_for_entries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(main_module, "RATE_LIMIT_REQUESTS", 2)
+        main_module._rate_buckets.clear()
+
+        # Only the right-most entry was appended by our proxy; rotating the
+        # client-supplied prefix must not open a fresh bucket each time.
+        statuses = [
+            client.post(
+                "/api/transform",
+                files={"file": ("s.png", io.BytesIO(PNG_BYTES), "image/png")},
+                headers={"x-forwarded-for": f"198.51.100.{attempt}, 203.0.113.20"},
+            ).status_code
+            for attempt in range(3)
+        ]
+        assert statuses == [200, 200, 429]
+        main_module._rate_buckets.clear()
+
+    def test_forwarded_for_is_ignored_without_trusted_proxies(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(main_module, "TRUSTED_PROXY_COUNT", 0)
+        request = type("R", (), {"headers": {"x-forwarded-for": "203.0.113.30"}, "client": None})()
+        assert main_module._client_ip(request) == "unknown"
+
+    def test_idle_rate_buckets_are_swept(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(main_module, "RATE_BUCKET_SWEEP_THRESHOLD", 1)
+        main_module._rate_buckets.clear()
+        main_module._rate_buckets["198.51.100.1"].append(-10_000.0)
+        main_module._rate_buckets["198.51.100.2"].append(-10_000.0)
+
+        client.post(
+            "/api/transform",
+            files={"file": ("s.png", io.BytesIO(PNG_BYTES), "image/png")},
+            headers={"x-forwarded-for": "203.0.113.40"},
+        )
+        assert set(main_module._rate_buckets) == {"203.0.113.40"}
+        main_module._rate_buckets.clear()
+
     def test_cheap_endpoints_are_not_rate_limited(self) -> None:
         assert [client.get("/api/health").status_code for _ in range(30)] == [200] * 30
 
