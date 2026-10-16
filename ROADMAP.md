@@ -41,8 +41,8 @@ Dropzone ──► POST /api/transform ──► PixelCanvas + editor ──► 
 
 1. ~~**The result is read-only.**~~ **Closed in v1.2.0** — see F1. Pixel edits
    re-post to `/api/pattern`, so the legend, counts, chart and every export follow
-   automatically. What is *not* covered: keyboard painting, and persistence (a
-   reload still throws edits away — see F7).
+   automatically. What is *not* covered: keyboard painting (see **F12**), and
+   persistence (a reload still throws edits away — see F7).
 2. ~~**The craft promise is under-delivered.**~~ **Closed in v1.3.0** — see F2.
    The legend can now name the thread (`DMC 797 · Royal Blue`) and say how many
    skeins to buy, and the same columns are in the CSV and Markdown. What is
@@ -260,6 +260,53 @@ animated GIF uploads, reports success, and silently renders **frame 1 only**.
 **Tests:** animated GIF round-trip (build a 3-frame GIF fixture, assert frame
 count), sprite-sheet dimensions, and the rejection path.
 
+#### F12. Keyboard access to the pixel editor — `TODO` · **effort: S + M** · ⚠️ high priority (a11y)
+
+Found in the 2026-10-16 audit. Painting needs a pointer, and the editor toolbar
+claims `role="toolbar"` without the keyboard behaviour that role promises. For a
+project that holds itself to WCAG AA this is a **conformance gap (2.1.1
+Keyboard)**, not polish — which is why it sits in Tier 1. Ship it as two PRs,
+toolbar first.
+
+**12a — Toolbar arrow keys (S, `components/PixelEditor.tsx` only).**
+
+- [ ] Roving `tabIndex`: only the armed tool is `0`, the others `-1`, so the
+      toolbar is a single Tab stop
+- [ ] Left/Right move focus with wrap-around; Home/End jump to the first/last
+- [ ] Moving focus does **not** arm a tool — Enter/Space arms it, as today
+- [ ] Undo/redo stay outside the toolbar as ordinary Tab stops
+
+**12b — Keyboard cursor on the canvas (M).**
+
+A canvas cannot contain focusable cells, and a 200×200 ARIA grid would be 40,000
+nodes — the reason the chart table is already capped. Use a cursor instead:
+
+- [ ] Canvas becomes focusable (`tabIndex={0}`); `role="img"` cannot take input,
+      so switch to `role="application"` with instructions via `aria-describedby`
+- [ ] Cursor `{x, y}` appears on first focus. Arrows move one cell, Shift+arrow
+      jumps 10 (matches the major grid lines), Home/End go to the row edges
+- [ ] Enter/Space applies the armed tool through the existing
+      `editor.apply(cell)` — no change to the editing logic. With `inspect` it
+      copies the hex, like a click
+- [ ] A polite live region announces "Row 12, column 5 — Dark Blue #1D2B53";
+      the hover chip shows the same so sighted keyboard users get it too
+- [ ] Cursor outline drawn on an **overlay canvas** so moving it does not
+      repaint the grid (see the memoisation constraint in §5)
+- [ ] The scroll panel follows the cursor at high zoom
+- [ ] New strings in `en.ts` **and** `it.ts`
+
+**Open decision — does moving the cursor paint?** Recommended: no — Enter/Space
+applies one cell at a time; Fill already covers large areas. The alternative, a
+"pen down" toggle where arrows paint as they move, is faster for lines but easy
+to leave on by accident and needs its own announcement. Decide before 12b starts.
+
+**Files:** `components/PixelEditor.tsx`, `components/PixelCanvas.tsx`, a new pure
+module for the cursor maths (clamping, jumps) alongside `lib/zoom.ts`,
+`en.ts` + `it.ts`
+**Backend:** none
+**Tests:** the cursor maths is pure and is the first target once the step 0
+runner exists; until then, verify by hand with a screen reader (VoiceOver + NVDA).
+
 ---
 ### Tier 2 — cheap, high polish
 
@@ -381,6 +428,7 @@ contrast assertion per theme so the AA audit cannot silently regress.
 ```text
 0. Frontend test runner (Vitest + Testing Library)   ← gate for everything below
 1. F3a  fix silent GIF truncation                     ← correctness bug, tiny
+1b. F12 keyboard access to the editor                 ← a11y conformance gap, high priority
 2. F1   pixel editor + undo/redo                      ← SHIPPED v1.2.0
 3. F2   thread brand matching                         ← SHIPPED v1.3.0
 4. F4   dither strength                               ← tiny, users will notice
@@ -450,5 +498,6 @@ which is a real risk to the accessibility standard this project holds itself to.
 | 2026-10-04 | `threadBrand` is a **pattern** option, not a conversion setting | Deviates from the F2 plan on purpose. It changes no pixels, and a `TransformSettings` change re-runs the transform and discards the editor's edits — F1's data-loss hazard, caused by a control that cannot affect the result |
 | 2026-10-04 | Only **DMC** bundled, no Anchor | Anchor's codes are a separate table and its hexes could not be verified. A wrong table sends somebody to buy the wrong thread; a missing brand costs nothing |
 | 2026-10-04 | The DMC table is **curated** (121 shades), not the full range | Nearest-colour matching needs the colour space filled, not every point in it. Every extra row is another hex that can be wrong, and the module docstring says exactly that |
+| 2026-10-16 | F12 (keyboard access to the editor) filed as **Tier 1, high priority** | Found in the perf/security/a11y/SEO audit. Pointer-only painting fails WCAG 2.1.1; a conformance gap outranks new features. Deferred rather than fixed in the audit branch because 12b is a design change, not a fix |
 | 2026-10-04 | The skein estimate **ships with its assumption attached** | A skein count without the fabric count it was computed for is a number nobody can check. `fabricCount` and `stitchesPerSkein` travel with every response and with both exports |
 ---
