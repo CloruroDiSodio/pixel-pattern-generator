@@ -11,6 +11,7 @@
  */
 export const en = {
   'skipToStudio': 'Skip to the studio',
+  'common.opensInNewTab': '(opens in a new tab)',
 
   /* --- header ----------------------------------------------------------- */
   'header.title': 'Pixel Art & Pattern Generator',

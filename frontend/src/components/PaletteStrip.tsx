@@ -58,16 +58,20 @@ function PaletteStrip({
           const percent = totalCells > 0 ? (color.count / totalCells) * 100 : 0;
           const symbol = symbols?.[index];
           const isActive = activeIndex === index;
+          const swatchName = t('palette.swatchTitle', {
+            label: color.label,
+            hex: color.hex,
+            count: color.count,
+            percent: percent.toFixed(1),
+          });
           return (
             <li key={`${color.hex}-${index}`}>
               <button
                 type="button"
-                title={t('palette.swatchTitle', {
-                  label: color.label,
-                  hex: color.hex,
-                  count: color.count,
-                  percent: percent.toFixed(1),
-                })}
+                title={swatchName}
+                // The visible text is just the chart symbol and a percentage;
+                // without this the colour name never reaches a screen reader.
+                aria-label={swatchName}
                 onMouseEnter={() => setHovered(index)}
                 onMouseLeave={() => setHovered(null)}
                 onFocus={() => setHovered(index)}

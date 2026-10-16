@@ -48,6 +48,19 @@
   :focus-visible {
     @apply outline-none ring-2 ring-accent-soft ring-offset-2 ring-offset-ink-950;
   }
+
+  /* WCAG 2.3.3: honour the OS "reduce motion" setting for the spinner, the
+     swatch zoom and the fade-in. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 @layer components {
@@ -75,7 +88,7 @@
   }
 
   .btn-primary {
-    @apply border-transparent bg-accent text-white hover:bg-accent-strong hover:border-transparent;
+    @apply border-transparent bg-accent-strong text-white hover:bg-accent-deep hover:border-transparent;
   }
 
   .btn-ghost {

@@ -16,7 +16,10 @@ const config: Config = {
         accent: {
           DEFAULT: '#7c5cff',
           soft: '#a78bfa',
+          // Text on accent fills uses `strong`: white on DEFAULT is only 4.3:1,
+          // below the WCAG AA 4.5:1 minimum; on `strong` it is 5.5:1.
           strong: '#6d3fff',
+          deep: '#5b2bdb',
         },
         mint: '#4ade80',
         amber: '#fbbf24',
