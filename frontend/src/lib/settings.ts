@@ -4,9 +4,11 @@ import type { TransformSettings } from '@/types';
 export const DEFAULT_SETTINGS: TransformSettings = {
   grid_width: 32,
   max_colors: 16,
-  resize_mode: 'pixelate',
+  resize_mode: 'crisp',
   quantize_method: 'mediancut',
   dither: 'none',
+  dither_strength: 100,
+  cleanup: 'light',
   palette: 'auto',
   custom_palette: '',
   background: '',

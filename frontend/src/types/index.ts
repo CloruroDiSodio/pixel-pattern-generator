@@ -119,6 +119,7 @@ export interface ApiOptions {
   resizeModes: string[];
   quantizeMethods: string[];
   ditherModes: string[];
+  cleanupModes: string[];
   paletteSorts: string[];
   symbols: string[];
   /** Thread brands the legend can be matched against (`none` is implicit). */
@@ -137,9 +138,10 @@ export interface ApiOptions {
 /* Local state                                                                */
 /* -------------------------------------------------------------------------- */
 
-export type ResizeMode = 'pixelate' | 'sample' | 'smooth';
+export type ResizeMode = 'crisp' | 'pixelate' | 'sample' | 'smooth';
 export type QuantizeMethod = 'mediancut' | 'maxcoverage' | 'fastoctree' | 'libimagequant';
 export type DitherMode = 'none' | 'floyd_steinberg' | 'bayer';
+export type CleanupMode = 'none' | 'light' | 'strong';
 export type PaletteSort = 'usage' | 'luminance' | 'hex';
 export type PaletteId = 'auto' | 'custom' | (string & {});
 
@@ -167,6 +169,9 @@ export interface TransformSettings {
   resize_mode: ResizeMode;
   quantize_method: QuantizeMethod;
   dither: DitherMode;
+  /** 0–100: how much quantization error dithering spreads around. */
+  dither_strength: number;
+  cleanup: CleanupMode;
   palette: PaletteId;
   custom_palette: string;
   background: string;

@@ -4,6 +4,7 @@ import { Select, Slider, Toggle } from '@/components/controls';
 import { useTranslate } from '@/components/I18nProvider';
 import type { TranslationKey, Translate } from '@/lib/i18n';
 import type {
+  CleanupMode,
   DitherMode,
   PaletteDefinition,
   PaletteId,
@@ -32,6 +33,7 @@ interface SettingsPanelProps {
 
 /** Option labels, resolved lazily so they follow the active locale. */
 const RESIZE_LABELS: Record<ResizeMode, TranslationKey> = {
+  crisp: 'resize.crisp',
   pixelate: 'resize.pixelate',
   sample: 'resize.sample',
   smooth: 'resize.smooth',
@@ -48,6 +50,12 @@ const DITHER_LABELS: Record<DitherMode, TranslationKey> = {
   none: 'dither.none',
   floyd_steinberg: 'dither.floyd_steinberg',
   bayer: 'dither.bayer',
+};
+
+const CLEANUP_LABELS: Record<CleanupMode, TranslationKey> = {
+  none: 'cleanup.none',
+  light: 'cleanup.light',
+  strong: 'cleanup.strong',
 };
 
 const SORT_LABELS: Record<PaletteSort, TranslationKey> = {
@@ -152,6 +160,31 @@ export default function SettingsPanel({
         hint={t('settings.ditherHint')}
         disabled={disabled}
         onChange={(value) => onChange('dither', value)}
+      />
+
+      {settings.dither !== 'none' ? (
+        <div className="animate-fade-in">
+          <Slider
+            label={t('settings.ditherStrength')}
+            value={settings.dither_strength}
+            min={0}
+            max={100}
+            step={5}
+            suffix="%"
+            hint={t('settings.ditherStrengthHint')}
+            disabled={disabled}
+            onChange={(value) => onChange('dither_strength', value)}
+          />
+        </div>
+      ) : null}
+
+      <Select<CleanupMode>
+        label={t('settings.cleanup')}
+        value={settings.cleanup}
+        options={toOptions(CLEANUP_LABELS, t)}
+        hint={t('settings.cleanupHint')}
+        disabled={disabled}
+        onChange={(value) => onChange('cleanup', value)}
       />
 
       <Select<PaletteId>
