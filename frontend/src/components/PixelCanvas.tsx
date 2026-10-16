@@ -83,22 +83,22 @@ function PixelCanvas({
     }
 
     if (showGridLines && zoom >= 5) {
-      for (let x = 0; x <= width; x += 1) {
-        const major = x % 10 === 0;
+      // One path per line weight instead of one stroke() per line: a 200x200
+      // grid used to issue ~400 separate draw calls on every repaint.
+      context.lineWidth = 1;
+      for (const major of [false, true]) {
         context.strokeStyle = major ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.2)';
-        context.lineWidth = 1;
         context.beginPath();
-        context.moveTo(x * zoom + 0.5, 0);
-        context.lineTo(x * zoom + 0.5, height * zoom);
-        context.stroke();
-      }
-      for (let y = 0; y <= height; y += 1) {
-        const major = y % 10 === 0;
-        context.strokeStyle = major ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.2)';
-        context.lineWidth = 1;
-        context.beginPath();
-        context.moveTo(0, y * zoom + 0.5);
-        context.lineTo(width * zoom, y * zoom + 0.5);
+        for (let x = 0; x <= width; x += 1) {
+          if ((x % 10 === 0) !== major) continue;
+          context.moveTo(x * zoom + 0.5, 0);
+          context.lineTo(x * zoom + 0.5, height * zoom);
+        }
+        for (let y = 0; y <= height; y += 1) {
+          if ((y % 10 === 0) !== major) continue;
+          context.moveTo(0, y * zoom + 0.5);
+          context.lineTo(width * zoom, y * zoom + 0.5);
+        }
         context.stroke();
       }
     }
@@ -164,7 +164,11 @@ function PixelCanvas({
 
   const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     const cell = cellFromEvent(event);
-    setHover(cell);
+    // Only re-render when the pointer crosses into a different cell, not on
+    // every pixel of movement inside one.
+    setHover((previous) =>
+      previous?.x === cell?.x && previous?.y === cell?.y ? previous : cell,
+    );
     // Only continue a stroke over the canvas itself - without this the pointer
     // events that keep arriving after `onPointerLeave` would paint outside it.
     if (!dragging.current || !cell) return;
