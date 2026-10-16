@@ -99,7 +99,7 @@ function PixelEditor({
         {activeColor && activeIndex !== null ? (
           <span className="chip">
             <span
-              className="mr-2 inline-block h-3 w-3 rounded-sm border border-ink-600"
+              className="mr-2 inline-block h-3 w-3 rounded-xs border border-ink-600"
               style={{
                 backgroundColor: activeColor.hex,
                 // The swatch can be any colour the quantiser produced, so the

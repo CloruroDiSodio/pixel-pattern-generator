@@ -1,6 +1,100 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+
+@theme {
+  --color-ink-500: #3a4055;
+  --color-ink-600: #2a2f40;
+  --color-ink-700: #1e2230;
+  --color-ink-800: #151824;
+  --color-ink-900: #0e1017;
+  --color-ink-950: #08090d;
+
+  --color-accent: #7c5cff;
+  --color-accent-soft: #a78bfa;
+  --color-accent-strong: #6d3fff;
+  --color-accent-deep: #5b2bdb;
+
+  --color-mint: #4ade80;
+  --color-amber: #fbbf24;
+  --color-rose: #fb7185;
+
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --shadow-panel:
+    0 1px 0 0 rgb(255 255 255 / 0.04) inset, 0 20px 40px -24px rgb(0 0 0 / 0.8);
+
+  --animate-fade-in: fade-in 240ms ease-out both;
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
+}
+
+/* Component classes stay in the components layer, as in Tailwind 3, so any
+   utility on the same element (e.g. a space-y-* parent margin, or mb-0)
+   still overrides them. As @utility they would win over space-y-*. */
+@layer components {
+  .panel {
+    @apply rounded-2xl border border-ink-700 bg-ink-900/70 shadow-panel backdrop-blur-sm;
+  }
+
+  .field-label {
+    @apply mb-1.5 flex items-baseline justify-between text-xs font-medium uppercase tracking-wider text-slate-400;
+  }
+
+  .select,
+  .text-input {
+    @apply w-full rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-slate-100
+        transition placeholder:text-slate-400 hover:border-ink-500
+        focus:border-accent focus:outline-hidden focus:ring-1 focus:ring-accent
+        disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-ink-600;
+  }
+
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-800
+        px-3 py-2 text-sm font-medium text-slate-200 transition
+        hover:border-ink-500 hover:bg-ink-700
+        disabled:cursor-not-allowed disabled:opacity-45;
+  }
+
+  .btn-primary {
+    @apply border-transparent bg-accent-strong text-white hover:bg-accent-deep hover:border-transparent;
+  }
+
+  .btn-ghost {
+    @apply border-transparent bg-transparent text-slate-300 hover:bg-ink-800 hover:border-transparent;
+  }
+
+  .chip {
+    @apply inline-flex items-center rounded-full border border-ink-600 bg-ink-800 px-2 py-0.5
+        text-[11px] font-medium text-slate-300;
+  }
+}
 
 @layer base {
   :root {
@@ -25,7 +119,7 @@
   }
 
   input[type='range']::-webkit-slider-thumb {
-    @apply h-4 w-4 appearance-none rounded-full bg-accent-soft shadow;
+    @apply h-4 w-4 appearance-none rounded-full bg-accent-soft shadow-sm;
   }
 
   input[type='range']::-moz-range-thumb {
@@ -46,7 +140,7 @@
   }
 
   :focus-visible {
-    @apply outline-none ring-2 ring-accent-soft ring-offset-2 ring-offset-ink-950;
+    @apply outline-hidden ring-2 ring-accent-soft ring-offset-2 ring-offset-ink-950;
   }
 
   /* WCAG 2.3.3: honour the OS "reduce motion" setting for the spinner, the
@@ -60,44 +154,6 @@
       transition-duration: 0.01ms !important;
       scroll-behavior: auto !important;
     }
-  }
-}
-
-@layer components {
-  .panel {
-    @apply rounded-2xl border border-ink-700 bg-ink-900/70 shadow-panel backdrop-blur;
-  }
-
-  .field-label {
-    @apply mb-1.5 flex items-baseline justify-between text-xs font-medium uppercase tracking-wider text-slate-400;
-  }
-
-  .select,
-  .text-input {
-    @apply w-full rounded-lg border border-ink-600 bg-ink-800 px-3 py-2 text-sm text-slate-100
-      transition placeholder:text-slate-400 hover:border-ink-500
-      focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent
-      disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:border-ink-600;
-  }
-
-  .btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-lg border border-ink-600 bg-ink-800
-      px-3 py-2 text-sm font-medium text-slate-200 transition
-      hover:border-ink-500 hover:bg-ink-700
-      disabled:cursor-not-allowed disabled:opacity-45;
-  }
-
-  .btn-primary {
-    @apply border-transparent bg-accent-strong text-white hover:bg-accent-deep hover:border-transparent;
-  }
-
-  .btn-ghost {
-    @apply border-transparent bg-transparent text-slate-300 hover:bg-ink-800 hover:border-transparent;
-  }
-
-  .chip {
-    @apply inline-flex items-center rounded-full border border-ink-600 bg-ink-800 px-2 py-0.5
-      text-[11px] font-medium text-slate-300;
   }
 }
 

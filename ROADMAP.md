@@ -387,11 +387,12 @@ CSS variables. The darkest offenders: `CraftPattern.tsx` (18), `page.tsx` (16),
 Pick one approach and do not mix them:
 
 - [ ] **A — CSS custom properties** (recommended): promote the 12 custom tokens
-      (`ink-950…500`, `accent/soft/strong`, `mint`, `amber`, `rose`) to variables
-      in `globals.css`, alias them in `tailwind.config.ts`, and replace `slate-*`
+      (`ink-950…500`, `accent/soft/strong`, `mint`, `amber`, `rose`) — already
+      `--color-*` variables in the `@theme` block of `globals.css` (Tailwind 4) —
+      to theme-switchable values, and replace `slate-*`
       with semantic tokens (`--fg-muted`, `--border`, `--surface`). One place
       changes per token, and F9's print styles can reuse the same variables.
-- [ ] **B — `darkMode: 'class'` + `dark:` prefixes** on all 65 usages. Mechanical
+- [ ] **B — a class-based `dark` variant (`@custom-variant dark`) + `dark:` prefixes** on all 65 usages. Mechanical
       and safe, but every future component must remember the prefix.
 
 Acceptance criteria beyond the toggle itself:
@@ -416,7 +417,7 @@ Acceptance criteria beyond the toggle itself:
       than changing it.
 - [ ] New catalogue keys in `en.ts` **and** `it.ts` (see §5).
 
-**Files:** `app/globals.css`, `tailwind.config.ts`, `app/layout.tsx`, all 11
+**Files:** `app/globals.css`, `app/layout.tsx`, all 11
 components above, new `hooks/useTheme.ts`, `en.ts` + `it.ts`
 **Tests:** the hook's storage + OS-preference fallback, no-FOUC behaviour, and a
 contrast assertion per theme so the AA audit cannot silently regress.

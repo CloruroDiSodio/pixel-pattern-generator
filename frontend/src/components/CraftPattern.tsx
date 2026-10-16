@@ -46,7 +46,7 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
 
   if (!pattern) {
     return (
-      <div className="panel flex min-h-[18rem] items-center justify-center p-8 text-sm text-slate-400">
+      <div className="panel flex min-h-72 items-center justify-center p-8 text-sm text-slate-400">
         {loading ? t('pattern.building') : t('pattern.empty')}
       </div>
     );
@@ -121,7 +121,7 @@ function CraftPattern({ pattern, loading }: CraftPatternProps) {
               className="flex items-center gap-2 rounded-lg border border-ink-700 bg-ink-900/60 px-2 py-1.5"
             >
               <span
-                className="flex h-8 w-8 shrink-0 items-center justify-center rounded border border-ink-600 font-mono text-xs font-semibold"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-sm border border-ink-600 font-mono text-xs font-semibold"
                 style={{ backgroundColor: entry.hex, color: contrastText(entry.hex) }}
               >
                 {entry.symbol}

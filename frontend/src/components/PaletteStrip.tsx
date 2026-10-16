@@ -106,7 +106,7 @@ function PaletteStrip({
           {onCopy ? (
             <button
               type="button"
-              className="btn btn-ghost px-2 py-0.5 text-[11px]"
+              className="btn btn-ghost px-2 py-0.5 text-[11px] leading-5"
               onClick={() => onCopy(describedColor)}
             >
               {t('palette.copy')}

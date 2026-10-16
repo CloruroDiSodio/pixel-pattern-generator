@@ -115,7 +115,10 @@ function DownloadMenu({ transform, pattern, title, disabled }: DownloadMenuProps
         </button>
       </div>
 
-      <p role="status" className="text-xs text-slate-400 empty:!mt-0">
+      {/* space-y-3 spaces this line via the buttons row's bottom margin; when there
+          is no message, cancel it so the panel does not keep an empty gap. The
+          element stays rendered so the live region still announces. */}
+      <p role="status" className="text-xs text-slate-400 empty:-mt-3">
         {message}
       </p>
     </div>
