@@ -63,13 +63,12 @@ export default function Dropzone({ image, error, onFile, onClear }: DropzoneProp
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         onPaste={handlePaste}
-        className={`flex min-h-[13rem] flex-col items-center justify-center gap-3 rounded-2xl
+        className={`flex min-h-52 flex-col items-center justify-center gap-3 rounded-2xl
           border-2 border-dashed p-6 text-center transition
           ${dragging ? 'border-accent bg-accent/10' : 'border-ink-600 bg-ink-900/40'}`}
       >
         {image ? (
           <>
-            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={image.url}
               alt={t('dropzone.alt', { name: image.name })}

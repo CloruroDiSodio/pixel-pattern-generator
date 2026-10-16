@@ -194,7 +194,7 @@ function PixelCanvas({
         {hover && hoveredColor ? (
           <span className="chip min-w-0 truncate">
             <span
-              className="mr-2 inline-block h-3 w-3 shrink-0 rounded-sm border border-ink-600"
+              className="mr-2 inline-block h-3 w-3 shrink-0 rounded-xs border border-ink-600"
               style={{ backgroundColor: hoveredColor.hex }}
             />
             {hoveredColor.label} · {hoveredColor.hex} · ({hover.x + 1}, {hover.y + 1})
@@ -212,7 +212,7 @@ function PixelCanvas({
       <div ref={scrollRef} className="panel overflow-auto p-3">
         <canvas
           ref={canvasRef}
-          className={`pixelated rounded-sm shadow-lg select-none ${
+          className={`pixelated rounded-xs shadow-lg select-none ${
             DRAG_TOOLS.includes(tool) ? 'cursor-crosshair touch-none' : 'cursor-crosshair'
           }`}
           onPointerDown={handlePointerDown}

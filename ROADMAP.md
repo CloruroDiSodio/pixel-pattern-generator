@@ -387,11 +387,12 @@ CSS variables. The darkest offenders: `CraftPattern.tsx` (18), `page.tsx` (16),
 Pick one approach and do not mix them:
 
 - [ ] **A — CSS custom properties** (recommended): promote the 12 custom tokens
-      (`ink-950…500`, `accent/soft/strong`, `mint`, `amber`, `rose`) to variables
-      in `globals.css`, alias them in `tailwind.config.ts`, and replace `slate-*`
+      (`ink-950…500`, `accent/soft/strong`, `mint`, `amber`, `rose`) — already
+      `--color-*` variables in the `@theme` block of `globals.css` (Tailwind 4) —
+      to theme-switchable values, and replace `slate-*`
       with semantic tokens (`--fg-muted`, `--border`, `--surface`). One place
       changes per token, and F9's print styles can reuse the same variables.
-- [ ] **B — `darkMode: 'class'` + `dark:` prefixes** on all 65 usages. Mechanical
+- [ ] **B — a class-based `dark` variant (`@custom-variant dark`) + `dark:` prefixes** on all 65 usages. Mechanical
       and safe, but every future component must remember the prefix.
 
 Acceptance criteria beyond the toggle itself:
@@ -416,7 +417,7 @@ Acceptance criteria beyond the toggle itself:
       than changing it.
 - [ ] New catalogue keys in `en.ts` **and** `it.ts` (see §5).
 
-**Files:** `app/globals.css`, `tailwind.config.ts`, `app/layout.tsx`, all 11
+**Files:** `app/globals.css`, `app/layout.tsx`, all 11
 components above, new `hooks/useTheme.ts`, `en.ts` + `it.ts`
 **Tests:** the hook's storage + OS-preference fallback, no-FOUC behaviour, and a
 contrast assertion per theme so the AA audit cannot silently regress.
@@ -464,7 +465,7 @@ which is a real risk to the accessibility standard this project holds itself to.
 | **Dependency discipline** | Everything is exact-pinned, `requirements.lock` is hash-verified in CI, and Dependabot tracks pip/npm/actions (OWASP A08). Adding a runtime dependency is a deliberate decision, not a convenience — e.g. F11's `next-themes` suggestion should be weighed against doing it in ~15 lines of inline script. |
 | **Format allowlist is a security control** | `ALLOWED_FORMATS` (`processor.py:411`) exists to keep decoders with memory-safety bugs (e.g. CVE-2026-25990, PSD) unreachable. Do not add a format casually. |
 | **Python 3.10+ only** | Pillow 12.x, FastAPI and uvicorn dropped 3.9. `requirements.lock` is compiled on 3.12 (the Render target); `tests/test_lockfile.py` fails the build if it drifts from `requirements.txt`. |
-| **next@14 is unsupported** | Tracked as separate work; the static export is why the RSC advisories are unreachable in this topology. Do not add Server Functions. |
+| **No Server Functions** | The app is prerendered static content; keeping it free of Server Functions keeps the React Server Components attack surface out of this topology. |
 | **Performance budget** | The studio deliberately never requests the server-rendered PNG — it costs ~75 % of the payload and ~80 % of the CPU. Keep new features client-side where possible. |
 | **Memoisation** | `PixelCanvas`, `CraftPattern`, `PaletteStrip`, `DownloadMenu` are `memo`-wrapped; their callbacks must stay `useCallback`-stable or the memo is defeated (this has bitten the project before). |
 

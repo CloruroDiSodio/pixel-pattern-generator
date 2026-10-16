@@ -11,7 +11,7 @@ the interactive canvas preview and all the controls.
 
 ```
 ┌──────────────────────────┐        multipart/form-data        ┌───────────────────────────┐
-│  frontend/  Next.js 14   │  ──────────────────────────────►  │  backend/  FastAPI+Pillow │
+│  frontend/  Next.js 16   │  ──────────────────────────────►  │  backend/  FastAPI+Pillow │
 │  TS · Tailwind · Canvas  │  ◄──────────────────────────────  │  quantize · dither · grid │
 └──────────────────────────┘        JSON grid + pattern        └───────────────────────────┘
 ```
@@ -236,7 +236,7 @@ Every user-visible change also gets a `CHANGELOG.md` entry, in
 | | Version | Notes |
 | --- | --- | --- |
 | Python | **3.10+** | Pillow 12.x (CVE-2026-25990 fix), FastAPI and uvicorn require it |
-| Node.js | **18.17+** | `frontend/.nvmrc` pins 20.17.0 — `nvm use` picks it up |
+| Node.js | **20.9+** | `frontend/.nvmrc` pins 20.17.0 — `nvm use` picks it up |
 
 > **Run the two servers in two separate terminals.** Neither command returns to the
 > prompt, so starting the frontend in the same terminal as the backend will look
@@ -464,14 +464,6 @@ The bucket is in-memory and therefore **per process**: with several uvicorn work
 each one keeps its own counter, so the effective global limit is
 `limit × workers`. For a hard limit, also enforce limits at the edge (Cloudflare,
 Netlify, or an nginx `limit_req` zone in front of the service).
-
-### Known limitations
-
-- **`next@14.x` is an unsupported release line.** It is currently at the patch level
-  for every published advisory, but Next.js lists 14.x as unsupported, so it will
-  receive no further security fixes. The upgrade to 15.x/16.x is tracked as separate
-  work; our static export uses no Server Functions, which is why the React Server
-  Components advisories are not reachable in this topology.
 
 ## Accessibility, SEO & performance
 

@@ -51,6 +51,12 @@ The version lives in two places and must be bumped together:
   Pydantic 2.13, python-multipart 0.0.32, Pillow 12.3 and pytest 9, and
   `requirements.lock` is now compiled for Python 3.12, the deploy target.
 
+- **The frontend runs on Next.js 16, React 19 and Tailwind CSS 4.** Next.js 14 is
+  out of support. Linting moves to ESLint 9 (`npm run lint` now runs `eslint .`
+  with a flat `eslint.config.mjs`), the Tailwind theme moves from
+  `tailwind.config.ts` into an `@theme` block in `globals.css`, and Node.js 20.9+
+  is required. The interface looks the same.
+
 ### Fixed
 
 - **Presets with a colour limit ignored the picture.** When a preset has more

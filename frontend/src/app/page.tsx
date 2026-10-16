@@ -293,7 +293,7 @@ export default function StudioPage() {
           <StatusBanner error={error} loading={busy && !transform} />
 
           {!image ? (
-            <div className="panel flex min-h-[24rem] flex-col items-center justify-center gap-2 p-10 text-center">
+            <div className="panel flex min-h-96 flex-col items-center justify-center gap-2 p-10 text-center">
               <p className="text-lg font-medium text-white">{t('empty.title')}</p>
               <p className="max-w-md text-sm text-slate-400">{t('empty.body')}</p>
             </div>
