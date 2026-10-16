@@ -139,14 +139,20 @@ export default function StudioPage() {
   useEffect(() => {
     let cancelled = false;
     const probe = async () => {
+      // No point waking a sleeping free-tier backend for a tab nobody is
+      // looking at; `visibilitychange` probes again as soon as it is.
+      if (document.visibilityState === 'hidden') return;
       const online = await fetchHealth();
       if (!cancelled) setBackendOnline(online);
     };
     void probe();
     const timer = window.setInterval(() => void probe(), 30_000);
+    const onVisible = () => void probe();
+    document.addEventListener('visibilitychange', onVisible);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
     };
   }, []);
 
