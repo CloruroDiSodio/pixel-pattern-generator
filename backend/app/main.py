@@ -319,12 +319,15 @@ class PatternResponse(BaseModel):
 
 @app.get("/", tags=["meta"])
 def read_root() -> Dict[str, str]:
-    return {
+    banner = {
         "service": "Pixel Art & Pattern Generator API",
         "version": __version__,
-        "docs": "/docs",
         "health": "/api/health",
     }
+    # Only advertise the docs when they are actually served.
+    if DOCS_ENABLED:
+        banner["docs"] = "/docs"
+    return banner
 
 
 @app.get("/api/health", tags=["meta"])
