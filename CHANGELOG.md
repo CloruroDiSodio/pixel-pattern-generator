@@ -12,7 +12,45 @@ The version lives in two places and must be bumped together:
 
 ## [Unreleased]
 
-Nothing yet.
+### Added
+
+- **Favicon and share image.** Links to the studio now show a preview card
+  instead of a bare URL.
+
+### Changed
+
+- **Responses are gzip-compressed**, cutting grid payloads by roughly 90 %.
+- **Image processing no longer blocks the API.** A slow conversion used to stall
+  every other request, including the health check.
+- **The pattern chart stays smooth on hover.** It no longer re-renders every
+  cell as the pointer moves; the pixel canvas also redraws grid lines faster.
+- **The health check pauses while the tab is hidden** and resumes as soon as it
+  is visible again.
+
+### Fixed
+
+- **Accessibility.**
+  - Primary buttons, the active tab and the skip link now meet WCAG AA
+    contrast; so does the footer version text.
+  - Toasts and export messages are announced by screen readers.
+  - The zoom slider and settings panel use their translated labels, and palette
+    swatches name their colour.
+  - The API docs link says it opens a new tab.
+  - The OS "reduce motion" setting is respected.
+- **Unknown URLs return a real 404** instead of a 200 with the app shell.
+
+### Security
+
+- **The transform rate limit can no longer be bypassed** by sending a fake
+  `X-Forwarded-For` address. The client IP is now read from the right using the
+  new `TRUSTED_PROXY_COUNT` setting (default `1`).
+- **`/api/pattern` validates its input.** Grids are capped at 200 × 200 (a large
+  grid previously produced a ~40 MB response), malformed colours return 422
+  instead of 500, and symbols and labels are length-limited.
+- **Uploads are read only up to the size limit** instead of in full.
+- **The frontend sends HSTS, a Content-Security-Policy and a
+  Permissions-Policy.**
+- The API banner only links `/docs` when the docs are enabled.
 
 ## [1.3.0] - 2026-10-04
 
