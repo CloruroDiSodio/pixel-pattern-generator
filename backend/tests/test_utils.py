@@ -16,10 +16,12 @@ from app.utils import (
     nearest_color_index,
     normalize_hex,
     numbered_labels,
+    oklab_to_rgb,
     parse_palette_string,
     readable_text_color,
     relative_luminance,
     rgb_to_hex,
+    rgb_to_oklab,
     sort_hex_colors,
     stitch_counts,
     symbol_grid,
@@ -63,13 +65,32 @@ class TestColorDistance:
 
     def test_both_methods_rank_a_proximity_match_first(self) -> None:
         palette = [(0, 0, 0), (250, 250, 250), (255, 0, 0)]
-        for method in ("euclidean", "redmean"):
+        for method in ("euclidean", "redmean", "oklab"):
             assert nearest_color_index((240, 10, 10), palette, method) == 2
 
     def test_redmean_tracks_perception_better_than_euclidean(self) -> None:
         # Two dark blues are perceptually closer to each other than to black.
         navy, dark, black = (0, 0, 80), (0, 0, 40), (0, 0, 0)
         assert color_distance(navy, dark, "redmean") < color_distance(navy, black, "redmean")
+
+    def test_oklab_is_the_default(self) -> None:
+        first, second = (200, 40, 50), (40, 160, 90)
+        assert color_distance(first, second) == color_distance(first, second, "oklab")
+
+    def test_oklab_judges_dark_tones_like_a_person_does(self) -> None:
+        # Redmean says this dark grey is closer to black than to the mid grey;
+        # perceptually it sits nearer the middle, which OKLab reflects.
+        black, dark, mid = (0, 0, 0), (40, 40, 40), (90, 90, 90)
+        assert color_distance(dark, black, "redmean") < color_distance(dark, mid, "redmean")
+        assert color_distance(dark, black) > color_distance(dark, mid)
+
+    def test_oklab_round_trips_rgb(self) -> None:
+        for color in [(0, 0, 0), (255, 255, 255), (200, 40, 50), (12, 250, 99), (1, 2, 3)]:
+            assert oklab_to_rgb(rgb_to_oklab(color)) == color
+
+    def test_oklab_lightness_spans_zero_to_one(self) -> None:
+        assert rgb_to_oklab((0, 0, 0))[0] == pytest.approx(0.0)
+        assert rgb_to_oklab((255, 255, 255))[0] == pytest.approx(1.0)
 
     def test_unknown_method_raises(self) -> None:
         with pytest.raises(InvalidColorError):

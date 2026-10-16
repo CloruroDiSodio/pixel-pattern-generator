@@ -45,6 +45,7 @@ class TestMetaRoutes:
         body = client.get("/api/options").json()
         assert "pixelate" in body["resizeModes"]
         assert "floyd_steinberg" in body["ditherModes"]
+        assert body["cleanupModes"] == ["none", "light", "strong"]
         assert body["limits"]["maxColors"] >= 2
         assert body["defaults"]["grid_width"] == 32
         assert len(body["symbols"]) >= body["limits"]["maxColors"]
@@ -269,11 +270,32 @@ class TestTransformEndpoint:
         assert body["width"] == 16
         assert body["settings"]["resize_mode"] == "sample"
 
+    def test_quality_options_are_accepted(self) -> None:
+        body = upload(gridWidth=16, dither="bayer", ditherStrength=40, cleanup="strong")
+        assert body["settings"]["dither_strength"] == 40
+        assert body["settings"]["cleanup"] == "strong"
+
+    def test_out_of_range_dither_strength_is_rejected(self) -> None:
+        response = client.post(
+            "/api/transform",
+            files={"file": ("sample.png", PNG_BYTES, "image/png")},
+            data={"ditherStrength": "150"},
+        )
+        assert response.status_code == 422
+
+    def test_unknown_cleanup_mode_is_rejected(self) -> None:
+        response = client.post(
+            "/api/transform",
+            files={"file": ("sample.png", PNG_BYTES, "image/png")},
+            data={"cleanup": "magic"},
+        )
+        assert response.status_code == 400
+
     def test_unknown_form_fields_fall_back_to_the_defaults(self) -> None:
         # Only camelCase aliases are read; anything else is ignored on purpose.
         body = upload(grid_width=24, max_colors=4, resize_mode="smooth")
         assert body["width"] == 32
-        assert body["settings"]["resize_mode"] == "pixelate"
+        assert body["settings"]["resize_mode"] == "crisp"
 
     def test_palette_preset_is_applied(self) -> None:
         body = upload(gridWidth=16, palette="gameboy", maxColors=4)

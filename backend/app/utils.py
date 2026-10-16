@@ -11,6 +11,7 @@ from __future__ import annotations
 import csv
 import io
 import math
+from functools import lru_cache
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 RGB = Tuple[int, int, int]
@@ -25,7 +26,13 @@ MAX_COLORS = len(DEFAULT_SYMBOLS)
 
 _HEX_DIGITS = set("0123456789abcdefABCDEF")
 
-COLOR_DISTANCE_METHODS = ("euclidean", "redmean")
+COLOR_DISTANCE_METHODS = ("euclidean", "redmean", "oklab")
+
+#: Colour space used whenever the service has to decide which of two colours
+#: is "closer": pixel snapping, palette selection and thread matching.
+DEFAULT_DISTANCE = "oklab"
+
+Lab = Tuple[float, float, float]
 
 
 class InvalidColorError(ValueError):
@@ -71,15 +78,79 @@ def rgb_to_hex(rgb: Sequence[int]) -> str:
     return f"#{red:02X}{green:02X}{blue:02X}"
 
 
-def color_distance(first: RGB, second: RGB, method: str = "redmean") -> float:
-    """Return the perceptual-ish distance between two RGB colours.
+def _srgb_to_linear(channel: float) -> float:
+    value = channel / 255.0
+    return value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
 
-    Two strategies are supported:
 
+def _linear_to_srgb(value: float) -> float:
+    value = max(0.0, min(1.0, value))
+    encoded = value * 12.92 if value <= 0.0031308 else 1.055 * value ** (1 / 2.4) - 0.055
+    return encoded * 255.0
+
+
+@lru_cache(maxsize=65536)
+def _oklab_cached(red: int, green: int, blue: int) -> Lab:
+    r, g, b = _srgb_to_linear(red), _srgb_to_linear(green), _srgb_to_linear(blue)
+    l = (0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b) ** (1 / 3)
+    m = (0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b) ** (1 / 3)
+    s = (0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b) ** (1 / 3)
+    return (
+        0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s,
+        1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+        0.0259040371 * l + 0.7827717662 * m - 0.8086757660 * s,
+    )
+
+
+def rgb_to_oklab(rgb: Sequence[float]) -> Lab:
+    """Convert an sRGB colour into Björn Ottosson's OKLab space.
+
+    OKLab is perceptually uniform: equal euclidean distances look like equal
+    colour differences, which RGB (and even redmean) are not.  ``L`` runs from
+    0 (black) to 1 (white); ``a``/``b`` are roughly within ``±0.4``.
+    """
+
+    red, green, blue = (clamp(round(channel)) for channel in tuple(rgb)[:3])
+    return _oklab_cached(red, green, blue)
+
+
+def oklab_to_rgb(lab: Sequence[float]) -> RGB:
+    """Convert an OKLab colour back into a (gamut clipped) sRGB triple."""
+
+    lightness, a, b = lab
+    l = (lightness + 0.3963377774 * a + 0.2158037573 * b) ** 3
+    m = (lightness - 0.1055613458 * a - 0.0638541728 * b) ** 3
+    s = (lightness - 0.0894841775 * a - 1.2914855480 * b) ** 3
+    linear = (
+        4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s,
+        -1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s,
+        -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s,
+    )
+    return tuple(clamp(round(_linear_to_srgb(channel))) for channel in linear)  # type: ignore[return-value]
+
+
+def oklab_distance_sq(first: Lab, second: Lab) -> float:
+    """Squared euclidean distance between two OKLab colours (cheap to compare)."""
+
+    return (
+        (first[0] - second[0]) ** 2
+        + (first[1] - second[1]) ** 2
+        + (first[2] - second[2]) ** 2
+    )
+
+
+def color_distance(first: RGB, second: RGB, method: str = DEFAULT_DISTANCE) -> float:
+    """Return the perceptual distance between two RGB colours.
+
+    Three strategies are supported:
+
+    * ``oklab``    – euclidean distance in OKLab, a perceptually uniform space.
+      This is the default and what the whole service uses.
+    * ``redmean``  – the "redmean" RGB approximation; better than plain RGB but
+      still misjudges dark tones and saturated hues.
     * ``euclidean`` – plain RGB euclidean distance (fast, naive).
-    * ``redmean``  – the "redmean" approximation which weights the red channel
-      according to the shared red level and therefore tracks human perception
-      far better across the whole cube.  This is the default.
+
+    ``oklab`` distances are on a 0–1 scale; the RGB methods on 0–~765.
     """
 
     if method not in COLOR_DISTANCE_METHODS:
@@ -87,6 +158,9 @@ def color_distance(first: RGB, second: RGB, method: str = "redmean") -> float:
             f"unknown color distance method: {method!r} "
             f"(expected one of {', '.join(COLOR_DISTANCE_METHODS)})"
         )
+
+    if method == "oklab":
+        return math.sqrt(oklab_distance_sq(rgb_to_oklab(first), rgb_to_oklab(second)))
 
     red_1, green_1, blue_1 = first[:3]
     red_2, green_2, blue_2 = second[:3]
@@ -110,7 +184,7 @@ def color_distance(first: RGB, second: RGB, method: str = "redmean") -> float:
 
 
 def nearest_color_index(
-    target: RGB, palette: Sequence[RGB], method: str = "redmean"
+    target: RGB, palette: Sequence[RGB], method: str = DEFAULT_DISTANCE
 ) -> int:
     """Return the index of the palette entry closest to ``target``.
 
@@ -120,6 +194,14 @@ def nearest_color_index(
 
     if not palette:
         raise InvalidColorError("cannot match a colour against an empty palette")
+
+    if method == "oklab":
+        # Convert the target once instead of once per palette entry.
+        point = rgb_to_oklab(target)
+        return min(
+            range(len(palette)),
+            key=lambda index: (oklab_distance_sq(point, rgb_to_oklab(palette[index])), index),
+        )
 
     return min(
         range(len(palette)),

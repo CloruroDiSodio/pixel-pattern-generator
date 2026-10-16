@@ -21,12 +21,20 @@ from app.processor import (
     TransformOptions,
     apply_bayer_dither,
     build_pattern,
+    LIGHT_CLEANUP_DISTANCE,
     list_palettes,
     render_preview,
     transform_image,
+    _clean_grid,
+    _color_histogram,
+    _crisp_resize,
+    _fit_palette_subset,
+    _map_grid,
+    _refine_palette,
     _resolve_palette,
+    _select_palette_entries,
 )
-from app.utils import relative_luminance, rgb_to_hex
+from app.utils import color_distance, hex_to_rgb, relative_luminance, rgb_to_hex
 from conftest import (
     checkerboard_image,
     encode,
@@ -468,3 +476,164 @@ class TestThreadMatching:
         for entry, color in zip(pattern.legend, transform.palette):
             assert entry["thread"]["hex"] == color.hex  # type: ignore[index]
 
+
+
+class TestPaletteFitting:
+    """Presets larger than ``max_colors`` keep the shades the picture needs."""
+
+    @staticmethod
+    def _sky_and_grass() -> Image.Image:
+        image = Image.new("RGB", (40, 40), (41, 173, 255))  # PICO-8 blue
+        image.paste((0, 228, 54), (0, 20, 40, 40))  # PICO-8 green
+        return image
+
+    def test_reduced_preset_keeps_the_colours_of_the_image(self) -> None:
+        # Regression: the subset used to be an even spread of luminance chosen
+        # without looking at the image, so a blue/green picture got neither.
+        result = transform_image(
+            encode(self._sky_and_grass()),
+            TransformOptions(grid_width=20, palette="pico8", max_colors=3),
+        )
+        assert {color.hex for color in result.palette} == {"#29ADFF", "#00E436"}
+
+    def test_fitted_subset_beats_the_luminance_spread(self) -> None:
+        image = gradient_image(64, 64).resize((32, 32), Image.Resampling.BOX)
+        entries = BUILT_IN_PALETTES["dmc"]["colors"]
+
+        def error(subset: list) -> float:
+            colors = [hex_to_rgb(color) for color, _ in subset]
+            grid = _map_grid(image, colors)
+            return sum(
+                color_distance(image.getpixel((x, y)), colors[grid[y][x]])
+                for y in range(32)
+                for x in range(32)
+            )
+
+        fitted = _select_palette_entries(entries, 6, image)  # type: ignore[arg-type]
+        spread = _select_palette_entries(entries, 6)  # type: ignore[arg-type]
+        assert error(fitted) < error(spread) * 0.75
+
+    def test_fit_returns_at_most_max_colors_indexes(self) -> None:
+        colors = [hex_to_rgb(entry[0]) for entry in BUILT_IN_PALETTES["dmc"]["colors"]]  # type: ignore[index]
+        chosen = _fit_palette_subset(colors, 5, _color_histogram(gradient_image(48, 48)))
+        assert 1 < len(chosen) <= 5
+        assert chosen == sorted(set(chosen))
+
+    def test_fit_keeps_a_small_but_distinct_feature(self) -> None:
+        # A red dot on a big field of slightly varying greens: squared error
+        # must not let the greens outvote the only red.
+        image = Image.new("RGB", (30, 30), (40, 140, 60))
+        image.paste((60, 170, 80), (0, 0, 30, 15))
+        image.paste((220, 30, 40), (13, 13, 17, 17))
+        colors = [(40, 140, 60), (60, 170, 80), (50, 155, 70), (220, 30, 40), (0, 0, 255)]
+        chosen = _fit_palette_subset(colors, 2, _color_histogram(image))
+        assert 3 in chosen
+
+    def test_fit_ignores_a_single_stray_pixel(self) -> None:
+        image = Image.new("RGB", (30, 30), (40, 140, 60))
+        image.paste((60, 170, 80), (0, 0, 30, 15))
+        image.putpixel((5, 5), (0, 0, 255))
+        colors = [(40, 140, 60), (60, 170, 80), (0, 0, 255)]
+        assert _fit_palette_subset(colors, 2, _color_histogram(image)) == [0, 1]
+
+    def test_refinement_moves_swatches_onto_the_image_colours(self) -> None:
+        image = Image.new("RGB", (20, 20), (200, 40, 50))
+        image.paste((30, 90, 200), (0, 10, 20, 20))
+        refined = _refine_palette([(150, 60, 60), (60, 60, 150)], _color_histogram(image))
+        assert sorted(refined) == sorted([(200, 40, 50), (30, 90, 200)])
+
+    def test_refinement_leaves_a_single_colour_alone(self) -> None:
+        assert _refine_palette([(1, 2, 3)], _color_histogram(solid_image())) == [(1, 2, 3)]
+
+
+class TestCrispResize:
+    def test_edges_do_not_invent_in_between_colours(self) -> None:
+        # The red/green edge falls inside the fourth cell: box averaging makes
+        # it brown, crisp picks the majority side.
+        image = Image.new("RGB", (60, 10), (255, 0, 0))
+        image.paste((0, 255, 0), (33, 0, 60, 10))
+        crisp = set(_crisp_resize(image, 6, 1).getdata())
+        assert crisp <= {(255, 0, 0), (0, 255, 0)}
+        boxed = set(image.resize((6, 1), Image.Resampling.BOX).getdata())
+        assert boxed - {(255, 0, 0), (0, 255, 0)}
+
+    def test_crisp_is_the_default_and_keeps_the_size(self, png_bytes: bytes) -> None:
+        result = transform_image(png_bytes, TransformOptions(grid_width=12))
+        assert result.settings["resize_mode"] == "crisp"
+        assert result.width == 12
+
+
+class TestDitherStrength:
+    def test_zero_strength_is_the_same_as_no_dithering(self) -> None:
+        image = gradient_image(32, 32)
+        colors = [(0, 0, 0), (255, 255, 255)]
+        plain = _map_grid(image, colors, "none")
+        for mode in ("floyd_steinberg", "bayer"):
+            assert _map_grid(image, colors, mode, strength=0) == plain
+
+    def test_strength_controls_how_much_the_grid_changes(self) -> None:
+        image = gradient_image(32, 32)
+        colors = [(0, 0, 0), (255, 255, 255)]
+        plain = _map_grid(image, colors, "none")
+
+        def changed(strength: int) -> int:
+            grid = _map_grid(image, colors, "floyd_steinberg", strength=strength)
+            return sum(a != b for row_a, row_b in zip(grid, plain) for a, b in zip(row_a, row_b))
+
+        assert 0 < changed(40) < changed(100)
+
+    def test_bayer_does_not_modify_the_source_image(self) -> None:
+        image = gradient_image(16, 16)
+        before = list(image.getdata())
+        _map_grid(image, [(0, 0, 0), (255, 255, 255)], "bayer")
+        assert list(image.getdata()) == before
+
+    @pytest.mark.parametrize("value", [-1, 101, "lots"])
+    def test_strength_is_range_checked(self, value: object) -> None:
+        with pytest.raises(ProcessingError):
+            TransformOptions(dither_strength=value).validate()  # type: ignore[arg-type]
+
+
+class TestCleanup:
+    # Index 0 is a mid green, 1 a slightly lighter green, 2 near-black.
+    COLORS = [(60, 150, 70), (75, 165, 85), (10, 10, 10)]
+
+    @staticmethod
+    def _field_with(value: int) -> list:
+        grid = [[0] * 5 for _ in range(5)]
+        grid[2][2] = value
+        return grid
+
+    def test_light_merges_a_stray_cell_of_a_similar_shade(self) -> None:
+        assert _clean_grid(self._field_with(1), self.COLORS, "light") == self._field_with(0)
+
+    def test_light_keeps_a_high_contrast_detail(self) -> None:
+        # A single dark "eye" is a deliberate detail, not noise.
+        assert _clean_grid(self._field_with(2), self.COLORS, "light") == self._field_with(2)
+
+    def test_strong_merges_every_stray_cell(self) -> None:
+        assert _clean_grid(self._field_with(2), self.COLORS, "strong") == self._field_with(0)
+
+    def test_none_leaves_the_grid_alone(self) -> None:
+        assert _clean_grid(self._field_with(1), self.COLORS, "none") == self._field_with(1)
+
+    def test_connected_cells_are_not_stray(self) -> None:
+        grid = self._field_with(2)
+        grid[2][3] = 2
+        assert _clean_grid(grid, self.COLORS, "strong") == grid
+
+    def test_a_single_cell_grid_is_left_alone(self) -> None:
+        assert _clean_grid([[1]], self.COLORS, "strong") == [[1]]
+
+    def test_threshold_is_a_clearly_similar_shade(self) -> None:
+        similar = color_distance(self.COLORS[0], self.COLORS[1])
+        distinct = color_distance(self.COLORS[0], self.COLORS[2])
+        assert similar < LIGHT_CLEANUP_DISTANCE < distinct
+
+    def test_light_cleanup_is_the_default(self, png_bytes: bytes) -> None:
+        result = transform_image(png_bytes, TransformOptions(grid_width=12))
+        assert result.settings["cleanup"] == "light"
+
+    def test_unknown_mode_is_rejected(self) -> None:
+        with pytest.raises(ProcessingError, match="cleanup"):
+            TransformOptions(cleanup="magic").validate()
