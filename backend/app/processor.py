@@ -16,6 +16,7 @@ from __future__ import annotations
 import base64
 import io
 import logging
+import math
 import time
 from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -41,13 +42,17 @@ from .utils import (
     clamp,
     grid_to_csv,
     grid_to_markdown,
+    Lab,
     hex_to_rgb,
     nearest_color_index,
     normalize_hex,
     numbered_labels,
+    oklab_distance_sq,
+    oklab_to_rgb,
     parse_palette_string,
     relative_luminance,
     rgb_to_hex,
+    rgb_to_oklab,
     stitch_counts,
     symbol_grid,
 )
@@ -69,6 +74,7 @@ __all__ = [
     "RESIZE_MODES",
     "QUANTIZE_METHODS",
     "DITHER_MODES",
+    "CLEANUP_MODES",
     "PALETTE_SORTS",
 ]
 
@@ -89,7 +95,13 @@ RESIZE_MODES: Dict[str, int] = {
     "sample": Image.Resampling.NEAREST,
     # LANCZOS gives a softer, more photographic pixelation.
     "smooth": Image.Resampling.LANCZOS,
+    # Edge preserving: every cell takes a real colour from its block instead of
+    # a blend of both sides of an edge.  See :func:`_crisp_resize`.
+    "crisp": Image.Resampling.BOX,
 }
+
+#: ``crisp`` looks at an N x N grid of sub-samples per cell.
+CRISP_SUBSAMPLES = 3
 
 QUANTIZE_METHODS: Dict[str, int] = {
     "mediancut": Image.Quantize.MEDIANCUT,
@@ -100,6 +112,29 @@ QUANTIZE_METHODS: Dict[str, int] = {
 }
 
 DITHER_MODES = ("none", "floyd_steinberg", "bayer")
+
+#: How hard stray single cells ("confetti" stitches) are merged into their
+#: surroundings.  See :func:`_clean_grid`.
+CLEANUP_MODES = ("none", "light", "strong")
+
+#: ``light`` clean-up only merges a stray cell into a colour this close to it
+#: (OKLab distance; ~0.1 is a clearly similar shade, black vs white is 1.0), so
+#: deliberate high-contrast details such as an eye survive.
+LIGHT_CLEANUP_DISTANCE = 0.1
+
+#: Palette fitting weighs each pixel's error as distance ** (2 * this).
+#: Plain squared error (1.0) lets a large area's subtle shading outvote a small
+#: but distinct feature - a red apple in a field of two greens loses its red.
+#: Cubed distance (1.5) keeps such features while a single stray pixel still
+#: cannot outvote a real area.
+FIT_ERROR_POWER = 1.5
+
+#: Lloyd iterations used to refine the automatic palette in OKLab.
+KMEANS_ITERATIONS = 8
+
+#: Colour histograms are bucketed to this many bits per channel, which keeps
+#: the pure-Python palette maths fast with no visible loss.
+HISTOGRAM_BITS = 5
 
 PALETTE_SORTS = ("usage", "luminance", "hex")
 
@@ -218,9 +253,12 @@ class TransformOptions:
 
     grid_width: int = 32
     max_colors: int = 16
-    resize_mode: str = "pixelate"
+    resize_mode: str = "crisp"
     quantize_method: str = "mediancut"
     dither: str = "none"
+    #: 0-100: how much of the quantization error dithering spreads around.
+    dither_strength: int = 100
+    cleanup: str = "light"
     palette: str = "auto"
     custom_palette: Optional[str] = None
     background: Optional[str] = None
@@ -241,6 +279,7 @@ class TransformOptions:
         self.grid_width = _as_int(self.grid_width, "grid_width", MIN_GRID_SIZE, MAX_GRID_SIZE)
         self.max_colors = _as_int(self.max_colors, "max_colors", 2, MAX_COLORS)
         self.preview_scale = _as_int(self.preview_scale, "preview_scale", 1, MAX_PREVIEW_SCALE)
+        self.dither_strength = _as_int(self.dither_strength, "dither_strength", 0, 100)
 
         if self.resize_mode not in RESIZE_MODES:
             raise ProcessingError(
@@ -249,6 +288,10 @@ class TransformOptions:
         if self.dither not in DITHER_MODES:
             raise ProcessingError(
                 f"unknown dither mode '{self.dither}' (expected {', '.join(DITHER_MODES)})"
+            )
+        if self.cleanup not in CLEANUP_MODES:
+            raise ProcessingError(
+                f"unknown cleanup mode '{self.cleanup}' (expected {', '.join(CLEANUP_MODES)})"
             )
         if self.palette_sort not in PALETTE_SORTS:
             raise ProcessingError(
@@ -379,10 +422,14 @@ def list_palettes() -> List[Dict[str, object]]:
     return palettes
 
 
-def _resolve_palette(options: TransformOptions) -> Tuple[Optional[List[RGB]], List[str]]:
+def _resolve_palette(
+    options: TransformOptions, image: Optional[Image.Image] = None
+) -> Tuple[Optional[List[RGB]], List[str]]:
     """Return ``(colors, labels)`` for a fixed palette, or ``(None, [])``.
 
     ``None`` means "no palette constraint": let Pillow quantize automatically.
+    ``image`` (the resized grid image) lets a preset that is larger than
+    ``max_colors`` keep the shades *this* picture needs.
     """
 
     if options.palette == "custom" and options.custom_palette:
@@ -391,7 +438,7 @@ def _resolve_palette(options: TransformOptions) -> Tuple[Optional[List[RGB]], Li
 
     if options.palette in BUILT_IN_PALETTES and options.palette != "auto":
         entries = _select_palette_entries(
-            BUILT_IN_PALETTES[options.palette]["colors"], options.max_colors
+            BUILT_IN_PALETTES[options.palette]["colors"], options.max_colors, image
         )
         return (
             [hex_to_rgb(color) for color, _ in entries],  # type: ignore[misc]
@@ -401,24 +448,154 @@ def _resolve_palette(options: TransformOptions) -> Tuple[Optional[List[RGB]], Li
     return None, []
 
 
-def _select_palette_entries(entries: Sequence[Tuple[str, str]], max_colors: int) -> List[Tuple[str, str]]:
-    """Reduce a preset palette to ``max_colors`` *representative* colours.
+def _select_palette_entries(
+    entries: Sequence[Tuple[str, str]],
+    max_colors: int,
+    image: Optional[Image.Image] = None,
+) -> List[Tuple[str, str]]:
+    """Reduce a preset palette to ``max_colors`` colours, keeping its order.
 
-    Taking the first N entries would be wrong: every bundled palette is ordered
-    dark-first, so ``PICO-8`` with 5 colours would collapse to five near-black
-    swatches.  Instead the palette is sampled evenly across its luminance
-    range, then restored to the original order so indexes and labels stay
-    stable and predictable.
+    With an ``image`` the subset is chosen for that picture (see
+    :func:`_fit_palette_subset`); a sky-and-grass photo keeps its blues and
+    greens instead of an arbitrary spread of shades.  Without one, the palette
+    is sampled evenly across its luminance range - taking the first N entries
+    would be wrong, as every bundled palette is ordered dark-first.
+
+    Either way the result is restored to the original order so indexes and
+    labels stay stable and predictable.
     """
 
     entries = list(entries)
     if len(entries) <= max_colors:
         return entries
 
+    if image is not None:
+        rgbs = [hex_to_rgb(color) for color, _ in entries]
+        keep_indexes = set(_fit_palette_subset(rgbs, max_colors, _color_histogram(image)))
+        return [entry for index, entry in enumerate(entries) if index in keep_indexes]
+
     by_luminance = sorted(entries, key=lambda entry: relative_luminance(hex_to_rgb(entry[0])))
     step = len(by_luminance) / max_colors
     keep = {by_luminance[min(len(by_luminance) - 1, int(index * step))] for index in range(max_colors)}
     return [entry for entry in entries if entry in keep]
+
+
+def _color_histogram(image: Image.Image) -> List[Tuple[Lab, int]]:
+    """Return ``(oklab, pixel count)`` samples summarising an RGB image.
+
+    Pixels are bucketed to :data:`HISTOGRAM_BITS` per channel (each bucket is
+    represented by the mean colour of its pixels), which bounds the work of
+    the palette maths below no matter how noisy the photo is.
+    """
+
+    shift = 8 - HISTOGRAM_BITS
+    buckets: Dict[Tuple[int, int, int], List[int]] = {}
+    for count, (red, green, blue) in image.getcolors(image.width * image.height) or []:
+        key = (red >> shift, green >> shift, blue >> shift)
+        bucket = buckets.get(key)
+        if bucket is None:
+            buckets[key] = [count, red * count, green * count, blue * count]
+        else:
+            bucket[0] += count
+            bucket[1] += red * count
+            bucket[2] += green * count
+            bucket[3] += blue * count
+
+    return [
+        (rgb_to_oklab((red / count, green / count, blue / count)), count)
+        for count, red, green, blue in buckets.values()
+    ]
+
+
+def _nearest_two(point: Lab, centres: Sequence[Lab], alive: Sequence[int]) -> Tuple[int, int]:
+    """Indexes (into ``centres``) of the two entries of ``alive`` closest to ``point``."""
+
+    ranked = sorted(alive, key=lambda index: (oklab_distance_sq(point, centres[index]), index))
+    return ranked[0], ranked[1] if len(ranked) > 1 else ranked[0]
+
+
+def _fit_palette_subset(
+    colors: Sequence[RGB], max_colors: int, samples: Sequence[Tuple[Lab, int]]
+) -> List[int]:
+    """Pick the ``max_colors`` entries of ``colors`` that best reproduce ``samples``.
+
+    Greedy backward elimination: start from every entry some pixel would use
+    (as its first or second choice) and repeatedly drop the one whose removal
+    adds the least OKLab error (see :data:`FIT_ERROR_POWER`), until
+    ``max_colors`` remain.  Returns indexes into ``colors``.
+    """
+
+    labs = [rgb_to_oklab(color) for color in colors]
+    everything = list(range(len(labs)))
+
+    pool = set()
+    for point, _ in samples:
+        pool.update(_nearest_two(point, labs, everything))
+    alive = sorted(pool)
+    if len(alive) <= max_colors:
+        return alive
+
+    best: List[int] = []
+    second: List[int] = []
+    for point, _ in samples:
+        first, runner_up = _nearest_two(point, labs, alive)
+        best.append(first)
+        second.append(runner_up)
+
+    while len(alive) > max_colors:
+        cost = dict.fromkeys(alive, 0.0)
+        for position, (point, weight) in enumerate(samples):
+            cost[best[position]] += weight * (
+                oklab_distance_sq(point, labs[second[position]]) ** FIT_ERROR_POWER
+                - oklab_distance_sq(point, labs[best[position]]) ** FIT_ERROR_POWER
+            )
+        dropped = min(alive, key=lambda index: (cost[index], index))
+        alive.remove(dropped)
+        for position, (point, _) in enumerate(samples):
+            if best[position] == dropped or second[position] == dropped:
+                best[position], second[position] = _nearest_two(point, labs, alive)
+
+    return alive
+
+
+def _refine_palette(colors: Sequence[RGB], samples: Sequence[Tuple[Lab, int]]) -> List[RGB]:
+    """Polish an automatic palette with a few k-means (Lloyd) steps in OKLab.
+
+    Pillow's quantizers work in RGB on a single pass, so their swatches are
+    often a little off the colours a person would pick.  Starting from them,
+    each step moves every swatch to the weighted mean of the pixels closest to
+    it, measured perceptually.  Swatches that attract no pixels stay put.
+    """
+
+    centres = [rgb_to_oklab(color) for color in colors]
+    if len(centres) < 2 or not samples:
+        return list(colors)
+
+    indexes = range(len(centres))
+    for _ in range(KMEANS_ITERATIONS):
+        sums = [[0.0, 0.0, 0.0, 0.0] for _ in centres]
+        for point, weight in samples:
+            nearest = min(indexes, key=lambda index: oklab_distance_sq(point, centres[index]))
+            total = sums[nearest]
+            total[0] += weight
+            total[1] += point[0] * weight
+            total[2] += point[1] * weight
+            total[3] += point[2] * weight
+        moved = [
+            (total[1] / total[0], total[2] / total[0], total[3] / total[0]) if total[0] else centre
+            for centre, total in zip(centres, sums)
+        ]
+        shift = max(oklab_distance_sq(old, new) for old, new in zip(centres, moved))
+        centres = moved
+        if shift < 1e-6:
+            break
+
+    refined: List[RGB] = []
+    for centre in centres:
+        rgb = oklab_to_rgb(centre)
+        if rgb not in refined:
+            refined.append(rgb)
+    return refined
 
 
 # --------------------------------------------------------------------------- #
@@ -511,8 +688,46 @@ def _prepare_image(image: Image.Image, options: TransformOptions) -> Tuple[Image
     target_height = min(target_height, MAX_GRID_SIZE)
     target_width = min(target_width, MAX_GRID_SIZE)
 
-    resized = image.resize((target_width, target_height), RESIZE_MODES[options.resize_mode])
+    if options.resize_mode == "crisp":
+        resized = _crisp_resize(image, target_width, target_height)
+    else:
+        resized = image.resize((target_width, target_height), RESIZE_MODES[options.resize_mode])
     return resized, source_width, source_height
+
+
+def _crisp_resize(image: Image.Image, width: int, height: int) -> Image.Image:
+    """Downscale without inventing in-between colours at edges.
+
+    Plain box averaging turns a cell that straddles a red/green edge into
+    brown, and that brown then costs a palette slot.  Here each cell is first
+    split into :data:`CRISP_SUBSAMPLES`\ ² box-averaged sub-samples, and the
+    cell takes the sub-sample closest to the cell's mean: on an edge that is
+    the majority side, in a flat area it is (almost) the mean itself.  (A
+    cell split exactly in half can still land on a blended sub-sample.)
+    """
+
+    step = CRISP_SUBSAMPLES
+    fine = image.resize((width * step, height * step), Image.Resampling.BOX).load()
+    result = Image.new("RGB", (width, height))
+    target = result.load()
+    size = step * step
+
+    for y in range(height):
+        for x in range(width):
+            block = [
+                fine[x * step + dx, y * step + dy] for dy in range(step) for dx in range(step)
+            ]
+            mean_red = sum(pixel[0] for pixel in block) / size
+            mean_green = sum(pixel[1] for pixel in block) / size
+            mean_blue = sum(pixel[2] for pixel in block) / size
+            target[x, y] = min(
+                block,
+                key=lambda pixel: (pixel[0] - mean_red) ** 2
+                + (pixel[1] - mean_green) ** 2
+                + (pixel[2] - mean_blue) ** 2,
+            )
+
+    return result
 
 
 def apply_bayer_dither(image: Image.Image, strength: int = 32) -> Image.Image:
@@ -546,17 +761,13 @@ def apply_bayer_dither(image: Image.Image, strength: int = 32) -> Image.Image:
 
 
 def _candidate_palette(image: Image.Image, options: TransformOptions) -> List[RGB]:
-    """Return the candidate colours every pixel will be mapped onto.
+    """Build the automatic palette every pixel will be mapped onto.
 
-    For a fixed palette (built-in or custom) this is simply that palette.  In
-    automatic mode Pillow builds it with the requested quantization method -
-    note that we only ask Pillow for the *palette*, the actual pixel mapping
-    (and therefore the dithering) happens in :func:`_map_grid`.
+    Pillow builds a first palette with the requested quantization method,
+    which :func:`_refine_palette` then polishes in OKLab.  Note that we only
+    ask Pillow for the *palette*: the actual pixel mapping (and therefore the
+    dithering) happens in :func:`_map_grid`.
     """
-
-    fixed, _ = _resolve_palette(options)
-    if fixed:
-        return list(fixed)
 
     method = QUANTIZE_METHODS[options.quantize_method]
     try:
@@ -571,11 +782,32 @@ def _candidate_palette(image: Image.Image, options: TransformOptions) -> List[RG
         if index * 3 + 2 < len(raw):
             colors.append((raw[index * 3], raw[index * 3 + 1], raw[index * 3 + 2]))
 
-    return colors or [(0, 0, 0)]
+    if not colors:
+        return [(0, 0, 0)]
+    return _refine_palette(colors, _color_histogram(image))
+
+
+def _palette_spacing(colors: Sequence[RGB]) -> float:
+    """Typical RGB gap between a swatch and its nearest neighbour in ``colors``.
+
+    Ordered dithering has to nudge pixels by roughly this much to reach the
+    next shade: a fixed nudge is invisible with a 4-colour palette and pure
+    noise with a 40-colour one.
+    """
+
+    if len(colors) < 2:
+        return 0.0
+    gaps = sorted(
+        min(math.dist(color, other) for other in colors if other is not color) for color in colors
+    )
+    return gaps[len(gaps) // 2] / math.sqrt(3)  # median, expressed per channel
 
 
 def _map_grid(
-    image: Image.Image, colors: Sequence[RGB], dither: str = "none"
+    image: Image.Image,
+    colors: Sequence[RGB],
+    dither: str = "none",
+    strength: int = 100,
 ) -> List[List[int]]:
     """Snap every pixel onto the closest entry of ``colors``.
 
@@ -583,9 +815,14 @@ def _map_grid(
     ``Image.convert("P", palette=...)`` *blends* colours instead of matching
     them, so both the matching and the dithering are implemented here:
 
-    * ``none``            – plain nearest colour (redmean distance, cached).
-    * ``floyd_steinberg`` – error diffusion, weights 7/16, 3/16, 5/16, 1/16.
-    * ``bayer``           – ordered dithering via the 4x4 threshold matrix.
+    * ``none``            – plain nearest colour (OKLab distance, cached).
+    * ``floyd_steinberg`` – serpentine error diffusion, weights 7/16, 3/16,
+      5/16, 1/16; alternating the scan direction avoids diagonal "worms".
+    * ``bayer``           – ordered dithering via the 4x4 threshold matrix,
+      scaled to the palette's spacing.
+
+    ``strength`` (0-100) scales how much error is spread around; lower values
+    give calmer, less speckled charts.
     """
 
     if not colors:
@@ -594,6 +831,7 @@ def _map_grid(
     width, height = image.size
     pixels = [tuple(pixel[:3]) for pixel in image.getdata()]
     grid: List[List[int]] = [[0] * width for _ in range(height)]
+    amount = strength / 100.0
 
     cache: Dict[RGB, int] = {}
 
@@ -604,28 +842,36 @@ def _map_grid(
             cache[rgb] = index
         return index
 
-    if dither == "bayer":
-        pixels = list(apply_bayer_dither(image).getdata())
+    if dither == "bayer" and amount > 0:
+        spread = _palette_spacing(colors) * amount
+        pixels = list(apply_bayer_dither(image.copy(), strength=spread).getdata())
 
-    if dither == "floyd_steinberg":
+    if dither == "floyd_steinberg" and amount > 0:
         # Error diffusion needs a mutable float working copy of the pixels.
         buffer = [[float(channel) for channel in pixel] for pixel in pixels]
         for y in range(height):
-            for x in range(width):
-                position = y * width + x
-                red, green, blue = buffer[position]
+            # Serpentine: odd rows run right-to-left with mirrored neighbours.
+            direction = 1 if y % 2 == 0 else -1
+            columns = range(width) if direction == 1 else range(width - 1, -1, -1)
+            # (dx, dy, weight) - ahead, behind-below, below, ahead-below.
+            neighbours = (
+                (direction, 0, 7.0),
+                (-direction, 1, 3.0),
+                (0, 1, 5.0),
+                (direction, 1, 1.0),
+            )
+            for x in columns:
+                red, green, blue = buffer[y * width + x]
                 key = (clamp(red), clamp(green), clamp(blue))
                 index = lookup(key)
                 grid[y][x] = index
 
                 target_red, target_green, target_blue = colors[index]
                 errors = (
-                    red - target_red,
-                    green - target_green,
-                    blue - target_blue,
+                    (red - target_red) * amount,
+                    (green - target_green) * amount,
+                    (blue - target_blue) * amount,
                 )
-                # (dx, dy, weight) - right, below-left, below, below-right.
-                neighbours = ((1, 0, 7.0), (-1, 1, 3.0), (0, 1, 5.0), (1, 1, 1.0))
                 for offset_x, offset_y, weight in neighbours:
                     neighbour_x, neighbour_y = x + offset_x, y + offset_y
                     if not (0 <= neighbour_x < width and neighbour_y < height):
@@ -641,6 +887,72 @@ def _map_grid(
         row = grid[y]
         for x in range(width):
             row[x] = lookup(pixels[offset + x])
+
+    return grid
+
+
+def _clean_grid(
+    grid: List[List[int]], colors: Sequence[RGB], mode: str = "light"
+) -> List[List[int]]:
+    """Merge stray single cells ("confetti") into their surroundings.
+
+    A cell is stray when none of its four orthogonal neighbours shares its
+    colour.  Isolated stitches are tedious to sew and mostly noise, so a stray
+    cell takes the colour most common among its eight neighbours (ties go to
+    the shade closest to its own).
+
+    * ``none``   – leave the grid alone.
+    * ``light``  – only merge when that colour is close
+      (:data:`LIGHT_CLEANUP_DISTANCE`), so a deliberate detail such as a dark
+      eye on a light face survives.  One pass.
+    * ``strong`` – merge every stray cell, repeating until nothing changes
+      (at most three passes).
+    """
+
+    if mode == "none":
+        return grid
+
+    labs = [rgb_to_oklab(color) for color in colors]
+    limit = LIGHT_CLEANUP_DISTANCE ** 2 if mode == "light" else math.inf
+    height = len(grid)
+    width = len(grid[0]) if height else 0
+
+    for _ in range(1 if mode == "light" else 3):
+        cleaned = [row[:] for row in grid]
+        changed = False
+        for y in range(height):
+            for x in range(width):
+                value = grid[y][x]
+                orthogonal = (
+                    (y > 0 and grid[y - 1][x] == value)
+                    or (y + 1 < height and grid[y + 1][x] == value)
+                    or (x > 0 and grid[y][x - 1] == value)
+                    or (x + 1 < width and grid[y][x + 1] == value)
+                )
+                if orthogonal:
+                    continue
+
+                votes: Dict[int, int] = {}
+                for dy in (-1, 0, 1):
+                    for dx in (-1, 0, 1):
+                        ny, nx = y + dy, x + dx
+                        if (dx or dy) and 0 <= ny < height and 0 <= nx < width:
+                            votes[grid[ny][nx]] = votes.get(grid[ny][nx], 0) + 1
+                if not votes:
+                    continue  # a 1x1 grid has nothing to merge into
+
+                own = labs[value]
+                replacement = min(
+                    votes,
+                    key=lambda index: (-votes[index], oklab_distance_sq(own, labs[index]), index),
+                )
+                if oklab_distance_sq(own, labs[replacement]) > limit:
+                    continue
+                cleaned[y][x] = replacement
+                changed = True
+        grid = cleaned
+        if not changed:
+            break
 
     return grid
 
@@ -750,10 +1062,11 @@ def transform_image(data: bytes, options: Optional[TransformOptions] = None) -> 
     image = _open_image(data, background)
     resized, source_width, source_height = _prepare_image(image, resolved)
 
-    colors, labels = _resolve_palette(resolved)
+    colors, labels = _resolve_palette(resolved, resized)
     candidates = list(colors) if colors else _candidate_palette(resized, resolved)
 
-    mapped = _map_grid(resized, candidates, resolved.dither)
+    mapped = _map_grid(resized, candidates, resolved.dither, resolved.dither_strength)
+    mapped = _clean_grid(mapped, candidates, resolved.cleanup)
     palette, remap = _build_palette(mapped, candidates, labels, resolved.palette_sort)
     grid = _remap_grid(mapped, remap)
 

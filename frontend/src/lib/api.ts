@@ -138,6 +138,8 @@ export function transformImage(
   form.append('resizeMode', settings.resize_mode);
   form.append('quantizeMethod', settings.quantize_method);
   form.append('dither', settings.dither);
+  form.append('ditherStrength', String(settings.dither_strength));
+  form.append('cleanup', settings.cleanup);
   form.append('palette', settings.palette);
   form.append('paletteSort', settings.palette_sort);
   form.append('gridLines', String(settings.grid_lines));

@@ -14,10 +14,28 @@ The version lives in two places and must be bumped together:
 
 ### Added
 
+- **Clean up stray stitches.** A new setting merges isolated single cells
+  ("confetti") into their surroundings. *Light*, the default, keeps deliberate
+  details such as a dark eye; *Strong* removes every stray cell.
+- **Dither strength.** A 0–100 % slider shows up when dithering is on; lower
+  values give calmer charts with fewer speckles.
+- **Crisp resampling**, now the default: cells on an edge take one side's
+  colour instead of a blend of both, which wasted palette slots.
+
 - **Favicon and share image.** Links to the studio now show a preview card
   instead of a bare URL.
 
 ### Changed
+
+- **Colours are matched perceptually (OKLab)** instead of with the redmean RGB
+  formula: pixel snapping, palette selection and DMC thread matching all pick
+  the shade that looks closest.
+- **Sharper automatic palettes.** Pillow's palette is refined with a few k-means
+  steps in OKLab, roughly halving the average colour error at 8 colours.
+- **Calmer dithering.** Floyd–Steinberg now scans in a serpentine order (no
+  diagonal "worms"), and Bayer dithering is scaled to the palette's spacing
+  instead of a fixed amount: isolated stitches on the test photo fell from 57 %
+  to 16 % before clean-up, and to about 1 % with it.
 
 - **Responses are gzip-compressed**, cutting grid payloads by roughly 90 %.
 - **Image processing no longer blocks the API.** A slow conversion used to stall
@@ -28,6 +46,13 @@ The version lives in two places and must be bumped together:
   is visible again.
 
 ### Fixed
+
+- **Presets with a colour limit ignored the picture.** When a preset has more
+  shades than the limit (DMC has 121), the subset was an even spread of
+  light-to-dark shades, so a sky-and-grass photo could get no blues or greens.
+  It is now chosen for the image: on a test photo the average colour error with
+  8–16 DMC shades fell from ΔE ≈ 32–36 to ≈ 14, and with 8 PICO‑8 colours from
+  ≈ 38 to ≈ 19.
 
 - **Accessibility.**
   - Primary buttons, the active tab and the skip link now meet WCAG AA

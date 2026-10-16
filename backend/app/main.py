@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_vali
 
 from . import __version__
 from .processor import (
+    CLEANUP_MODES,
     DITHER_MODES,
     MAX_COLORS,
     MAX_GRID_SIZE,
@@ -239,6 +240,7 @@ class OptionsResponse(BaseModel):
     resizeModes: List[str]
     quantizeMethods: List[str]
     ditherModes: List[str]
+    cleanupModes: List[str]
     paletteSorts: List[str]
     symbols: List[str]
     #: Thread brands the legend can be matched against.  ``"none"`` is implicit -
@@ -345,6 +347,7 @@ def options() -> OptionsResponse:
         resizeModes=list(RESIZE_MODES),
         quantizeMethods=list(QUANTIZE_METHODS),
         ditherModes=list(DITHER_MODES),
+        cleanupModes=list(CLEANUP_MODES),
         paletteSorts=list(PALETTE_SORTS),
         symbols=list(DEFAULT_SYMBOLS),
         threadBrands=list_thread_brands(),
@@ -383,9 +386,11 @@ async def transform(
         int, Form(alias="gridWidth", ge=MIN_GRID_SIZE, le=MAX_GRID_SIZE)
     ] = 32,
     max_colors: Annotated[int, Form(alias="maxColors", ge=2, le=MAX_COLORS)] = 16,
-    resize_mode: Annotated[str, Form(alias="resizeMode")] = "pixelate",
+    resize_mode: Annotated[str, Form(alias="resizeMode")] = "crisp",
     quantize_method: Annotated[str, Form(alias="quantizeMethod")] = "mediancut",
     dither: Annotated[str, Form()] = "none",
+    dither_strength: Annotated[int, Form(alias="ditherStrength", ge=0, le=100)] = 100,
+    cleanup: Annotated[str, Form()] = "light",
     palette: Annotated[str, Form()] = "auto",
     custom_palette: Annotated[Optional[str], Form(alias="customPalette")] = None,
     background: Annotated[Optional[str], Form()] = None,
@@ -421,6 +426,8 @@ async def transform(
         resize_mode=resize_mode,
         quantize_method=quantize_method,
         dither=dither,
+        dither_strength=dither_strength,
+        cleanup=cleanup,
         palette=palette,
         custom_palette=custom_palette,
         background=background,
