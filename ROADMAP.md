@@ -34,7 +34,7 @@ Dropzone ──► POST /api/transform ──► PixelCanvas + editor ──► 
 | Exports | PNG 16/32/64/128×, CSV chart, Markdown, raw JSON |
 | I18n | English + Italian, typed catalogues, `localStorage` (`ppg.locale`) |
 | Persistence | Settings only (`ppg.settings`). **The image, the result and any edits are lost on reload.** |
-| Backend tests | Full pytest suite, coverage-gated, matrix py3.9 + py3.12 |
+| Backend tests | Full pytest suite, coverage-gated, matrix py3.10 + py3.12 |
 | Frontend tests | **None** — `package.json` has only `dev/build/start/lint/typecheck` |
 
 ### 1.1 Gaps identified
@@ -462,8 +462,8 @@ which is a real risk to the accessibility standard this project holds itself to.
 | **Changelog** | Every user-visible change gets a `CHANGELOG.md` entry under `[Unreleased]`, in Keep a Changelog format. |
 | **Rate limit** | 20 requests / 60 s per client IP on `/api/transform` (`main.py:54`). It is **in-memory, therefore per-process**. Expensive work (batch, multi-frame) must be a batch endpoint, not N calls, or users hit 429. |
 | **Dependency discipline** | Everything is exact-pinned, `requirements.lock` is hash-verified in CI, and Dependabot tracks pip/npm/actions (OWASP A08). Adding a runtime dependency is a deliberate decision, not a convenience — e.g. F11's `next-themes` suggestion should be weighed against doing it in ~15 lines of inline script. |
-| **Format allowlist is a security control** | `ALLOWED_FORMATS` (`processor.py:411`) exists to keep decoders with memory-safety bugs (CVE-2026-25990) unreachable on Python 3.9. Do not add a format casually. |
-| **Python version split** | Pillow is pinned with markers: `>=3.10` → 12.1.1 (patched), `<3.10` → 11.3.0. `tests/test_lockfile.py` fails the build if either branch goes missing. |
+| **Format allowlist is a security control** | `ALLOWED_FORMATS` (`processor.py:411`) exists to keep decoders with memory-safety bugs (e.g. CVE-2026-25990, PSD) unreachable. Do not add a format casually. |
+| **Python 3.10+ only** | Pillow 12.x, FastAPI and uvicorn dropped 3.9. `requirements.lock` is compiled on 3.12 (the Render target); `tests/test_lockfile.py` fails the build if it drifts from `requirements.txt`. |
 | **next@14 is unsupported** | Tracked as separate work; the static export is why the RSC advisories are unreachable in this topology. Do not add Server Functions. |
 | **Performance budget** | The studio deliberately never requests the server-rendered PNG — it costs ~75 % of the payload and ~80 % of the CPU. Keep new features client-side where possible. |
 | **Memoisation** | `PixelCanvas`, `CraftPattern`, `PaletteStrip`, `DownloadMenu` are `memo`-wrapped; their callbacks must stay `useCallback`-stable or the memo is defeated (this has bitten the project before). |

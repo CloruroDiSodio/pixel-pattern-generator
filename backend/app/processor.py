@@ -829,7 +829,7 @@ def _map_grid(
         raise ProcessingError("cannot map pixels onto an empty palette")
 
     width, height = image.size
-    pixels = [tuple(pixel[:3]) for pixel in image.getdata()]
+    pixels = [tuple(pixel[:3]) for pixel in image.get_flattened_data()]
     grid: List[List[int]] = [[0] * width for _ in range(height)]
     amount = strength / 100.0
 
@@ -844,7 +844,7 @@ def _map_grid(
 
     if dither == "bayer" and amount > 0:
         spread = _palette_spacing(colors) * amount
-        pixels = list(apply_bayer_dither(image.copy(), strength=spread).getdata())
+        pixels = list(apply_bayer_dither(image.copy(), strength=spread).get_flattened_data())
 
     if dither == "floyd_steinberg" and amount > 0:
         # Error diffusion needs a mutable float working copy of the pixels.
