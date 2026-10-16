@@ -41,6 +41,14 @@
     X-Frame-Options = "DENY"
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin-when-cross-origin"
+    Strict-Transport-Security = "max-age=31536000; includeSubDomains"
+    # The app needs no device APIs; deny them so injected script cannot ask.
+    Permissions-Policy = "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+    # 'unsafe-inline' is required for the inline bootstrap scripts the Next.js App
+    # Router emits and for React style attributes. connect-src allows any HTTPS
+    # origin because the API host is only known at build time (NEXT_PUBLIC_API_URL).
+    # blob:/data: cover the uploaded-image preview and exported PNGs.
+    Content-Security-Policy = "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; font-src 'self'; connect-src 'self' https:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'; upgrade-insecure-requests"
 
 [[headers]]
   for = "/_next/static/*"
