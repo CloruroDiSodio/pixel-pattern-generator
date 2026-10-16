@@ -3,8 +3,8 @@
 # Versions are exact-pinned. Requires Python >= 3.10: Pillow 12.x (which carries
 # the CVE-2026-25990 fix, an out-of-bounds write when decoding a crafted PSD,
 # from 12.1.1 on), current FastAPI, uvicorn and python-multipart all dropped 3.9.
-fastapi==0.142.2
+fastapi==0.143.0
 uvicorn[standard]==0.54.0
 python-multipart==0.0.32
-pydantic==2.13.5
+pydantic==2.14.1
 pillow==12.3.0
