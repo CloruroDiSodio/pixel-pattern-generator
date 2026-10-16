@@ -151,18 +151,21 @@ Two Pillow APIs look like they do what we need but don't, which shaped the desig
 - `Image.convert("P", palette=…)` **blends** towards the palette instead of snapping
   to the nearest entry.
 
-So `processor._map_grid` implements nearest-colour matching (redmean distance, cached
+So `processor._map_grid` implements nearest-colour matching (OKLab distance, cached
 per unique colour) and Floyd–Steinberg error diffusion / Bayer ordered dithering
 itself. Pillow is still used to *build* the candidate palette and to decode/resize
 the image.
 
 ## Colour-count and presets
 
-`maxColors` applies to presets too, so PICO-8 can be rendered with 5 colours. The
-subset is **sampled evenly across the palette's luminance range** rather than sliced
-from the front — every bundled palette is ordered dark-first, so a naive "first N"
-slice would hand back five near-black swatches and flatten the image to a single
-colour. The surviving entries keep their original order, so palette indexes and
+`maxColors` applies to presets too, so DMC (121 shades) can be rendered with 12.
+The subset is **chosen for the image** (`processor._fit_palette_subset`): every
+shade some pixel would pick first or second is a candidate, and the shade whose
+removal adds the least error is dropped until `maxColors` remain. Error is
+weighed as distance³ so a small but distinct feature (a red apple in a green
+field) is not outvoted by subtle shading across a large area. Without an image
+the old fallback applies — an even spread across the luminance range. Either
+way the surviving entries keep their original order, so palette indexes and
 colour labels stay stable.
 
 ## Security controls

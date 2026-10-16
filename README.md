@@ -21,9 +21,10 @@ the interactive canvas preview and all the controls.
 | | |
 | --- | --- |
 | 🖼️ **Upload** | Drag & drop, paste or browse. PNG, JPEG, GIF, WEBP, BMP, TIFF up to 15 MB. |
-| 🎨 **Pixelate** | Grid width 4–200 cells, aspect ratio preserved, three resampling modes. |
+| 🎨 **Pixelate** | Grid width 4–200 cells, aspect ratio preserved, four resampling modes — the default *crisp* mode keeps edges sharp instead of inventing blended colours. |
 | 🎯 **Quantize** | Median cut / max coverage / fast octree / libimagequant, 2–40 colours. |
-| ✨ **Dither** | Floyd–Steinberg error diffusion and Bayer ordered dithering — both implemented from scratch, because Pillow's `dither=` argument is silently ignored. |
+| ✨ **Dither** | Floyd–Steinberg (serpentine) error diffusion and Bayer ordered dithering with adjustable strength — both implemented from scratch, because Pillow's `dither=` argument is silently ignored. |
+| 🧹 **Clean-up** | Merges stray single stitches ("confetti") into their surroundings; the light setting keeps deliberate high-contrast details. |
 | 🎮 **Palettes** | NES, PICO-8, Game Boy DMG, Sweetie 16, CGA, greyscale, **DMC**, or your own hex list. |
 | 🧵 **Craft patterns** | Symbol chart with numbered margins, colour legend, stitch counts, repeats. |
 | 🧶 **Thread matching** | Match every colour onto a real DMC shade — code, thread name and **skeins to buy**, in the legend *and* the exports. |
@@ -173,7 +174,7 @@ byte-for-byte what they were before this feature existed.
 
 `backend/app/threads.py` holds the table and the arithmetic, and imports nothing
 outside the standard library (same rule as `utils.py`). Matching reuses the
-**same** `nearest_color_index` the quantiser uses — one redmean distance
+**same** `nearest_color_index` the quantiser uses — one OKLab distance
 function for the whole app means the swatch that looks closest on screen and the
 thread recommended agree, and ties keep resolving to the same index. Results are
 cached per unique colour; a pattern has at most 40 of them.
@@ -342,9 +343,11 @@ All payloads are **camelCase** on the wire. Interactive reference: `/docs`.
 | `file` | binary | *required* | The image to pixelate |
 | `gridWidth` | int | `32` | 4–200 columns; height follows the aspect ratio |
 | `maxColors` | int | `16` | 2–40 |
-| `resizeMode` | enum | `pixelate` | `pixelate` (box) · `sample` (nearest) · `smooth` (lanczos) |
+| `resizeMode` | enum | `crisp` | `crisp` (edge preserving) · `pixelate` (box) · `sample` (nearest) · `smooth` (lanczos) |
 | `quantizeMethod` | enum | `mediancut` | `mediancut` · `maxcoverage` · `fastoctree` · `libimagequant` |
 | `dither` | enum | `none` | `none` · `floyd_steinberg` · `bayer` |
+| `ditherStrength` | int | `100` | 0–100 % of the quantization error that dithering spreads |
+| `cleanup` | enum | `light` | `none` · `light` (merge similar stray cells) · `strong` (merge every stray cell) |
 | `palette` | enum | `auto` | `auto`, a preset id (`nes`, `pico8`, `gameboy`, `sweetie16`, `cga`, `grayscale`, `dmc`), or `custom` |
 | `customPalette` | string | – | Required when `palette=custom`, e.g. `#1D2B53,#7E2553` |
 | `background` | hex | – | Colour transparent pixels are flattened onto (default white) |
@@ -570,15 +573,25 @@ Pillow needs no system packages, so the default Python image is enough.
 1. **Decode** — `Image.open` + `ImageOps.exif_transpose` so phone photos are upright;
    transparent pixels are flattened onto the background colour.
 2. **Resample** — aspect-preserving resize to `gridWidth` with the selected filter.
-3. **Palette** — Pillow builds a candidate palette (median cut & co.), or your
-   preset/custom palette is used verbatim.
-4. **Map & dither** — every pixel is matched to the closest palette entry using the
-   *redmean* distance (better perceptual ranking than plain RGB distance; results are
-   cached per unique colour). With dithering on, the error is diffused to neighbouring
-   pixels (7/16, 3/16, 5/16, 1/16) or ordered-dithered through a 4×4 Bayer matrix.
-5. **Matrix** — unused colours are dropped, the palette is sorted and a remap table
+   `crisp` (the default) box-averages each cell into 3×3 sub-samples and keeps the
+   sub-sample closest to the cell's mean, so a cell on an edge takes the majority
+   side's colour instead of a blend that would waste a palette slot.
+3. **Palette** — in `auto` mode Pillow builds a first palette (median cut & co.),
+   then a few k-means steps in OKLab move each swatch onto the colours it actually
+   covers. A preset larger than `maxColors` (DMC has 121 shades) is reduced *for
+   this image*: starting from every shade some pixel would use, the one whose
+   removal costs least is dropped until `maxColors` remain. Custom palettes are
+   used verbatim.
+4. **Map & dither** — every pixel is matched to the closest palette entry in
+   *OKLab*, a perceptually uniform colour space (results are cached per unique
+   colour). With dithering on, the error is diffused serpentine-wise to neighbouring
+   pixels (7/16, 3/16, 5/16, 1/16) or ordered-dithered through a 4×4 Bayer matrix
+   scaled to the palette's spacing; `ditherStrength` scales either.
+5. **Clean up** — stray cells whose four neighbours all differ take the most common
+   neighbouring colour (`light` only when that colour is similar).
+6. **Matrix** — unused colours are dropped, the palette is sorted and a remap table
    rewrites the grid so the indexes are contiguous.
-6. **Render** — the grid is drawn to a PNG (nearest-neighbour upscale, major line
+7. **Render** — the grid is drawn to a PNG (nearest-neighbour upscale, major line
    every 10 cells) and returned as a data URI for the canvas preview.
 
 ## License
