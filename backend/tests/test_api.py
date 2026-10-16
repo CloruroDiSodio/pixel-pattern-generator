@@ -261,7 +261,7 @@ class TestTransformEndpoint:
         without_preview = json.dumps(upload(gridWidth=64, preview="false", previewScale=20))
         # The base64 PNG is pure overhead for the studio; without it the payload
         # is just the grid, palette and settings.
-        assert without_preview < with_preview
+        assert len(without_preview) < len(with_preview)
         assert "previewPng" not in without_preview
         assert with_preview.count("data:image/png;base64") == 1
 
