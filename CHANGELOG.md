@@ -91,6 +91,16 @@ The version lives in two places and must be bumped together:
   from `next.config.mjs`, together with a new Content-Security-Policy,
   Permissions-Policy and HSTS.
 - The API banner only links `/docs` when the docs are enabled.
+- **The frontend runs on Node.js 24.22.1.** Node.js 20 is end-of-life and never
+  received the October 2026 security release (TLS hostname-check bypass, Brotli
+  RCE, eMudhra certificate distrust). `frontend/.nvmrc` and `netlify.toml` pin
+  24.22.1, and `engines` now requires 22.23.4+, 24.22.1+ or 26.12.1+.
+- **certifi is updated to 2026.10.23**, which drops the compromised eMudhra
+  (emSign) roots from the CA bundle the backend's HTTP stack uses.
+- **Next.js 16.4.3 and PostCSS 8.5.31.** Next.js 16.4.0 had critical advisories
+  (RCE in the Image Optimization API with SVGs and in `use cache`, Server
+  Actions DoS) and PostCSS 8.4.49 had source-map file disclosure and XSS issues.
+  `eslint-config-next` moves to 16.4.3 with Next. `npm audit` is clean.
 
 ## [1.3.0] - 2026-10-04
 

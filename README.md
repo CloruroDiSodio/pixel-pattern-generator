@@ -236,7 +236,7 @@ Every user-visible change also gets a `CHANGELOG.md` entry, in
 | | Version | Notes |
 | --- | --- | --- |
 | Python | **3.10+** | Pillow 12.x (CVE-2026-25990 fix), FastAPI and uvicorn require it |
-| Node.js | **20.9+** | `frontend/.nvmrc` pins 20.17.0 — `nvm use` picks it up |
+| Node.js | **22.23.4+, 24.22.1+ or 26.12.1+** | `frontend/.nvmrc` pins 24.22.1 — `nvm use` picks it up |
 
 > **Run the two servers in two separate terminals.** Neither command returns to the
 > prompt, so starting the frontend in the same terminal as the backend will look

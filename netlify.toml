@@ -11,7 +11,7 @@
   publish = ".next"
 
 [build.environment]
-  NODE_VERSION = "20.17.0"
+  NODE_VERSION = "24.22.1"
 
   # NEXT_PUBLIC_API_URL is deliberately NOT set here.
   #
