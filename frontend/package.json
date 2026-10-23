@@ -24,7 +24,7 @@
     "eslint-config-next": "16.4.3",
     "postcss": "8.5.31",
     "tailwindcss": "4.3.3",
-    "typescript": "5.7.2"
+    "typescript": "7.0.2"
   },
   "engines": {
     "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
